@@ -58,9 +58,22 @@ enum VMX_state
 //// Implementation
 ////
 
+//---------------------------------------------------------------------------------------------------------------------//
+VOID	LEAVE_GUEST_MODE(VCPUVMX* vm)
+{
+	vm->inRoot = RootMode; 
+	HYPERPLATFORM_LOG_DEBUG("VMM: %I64x Enter Root mode \r\n", vm);
+}
 
-VOID	LEAVE_GUEST_MODE(VCPUVMX* vm) { vm->inRoot = RootMode; }
-VOID	ENTER_GUEST_MODE(VCPUVMX* vm) { vm->inRoot = GuestMode; } 
+
+//---------------------------------------------------------------------------------------------------------------------//
+VOID	ENTER_GUEST_MODE(VCPUVMX* vm)
+{
+	vm->inRoot = GuestMode; 
+	HYPERPLATFORM_LOG_DEBUG("VMM: %I64x Enter Guest mode \r\n", vm);
+} 
+
+
 //---------------------------------------------------------------------------------------------------------------------//
 VMX_MODE GetVmxMode(VCPUVMX* vm)
 { 
@@ -262,7 +275,7 @@ VOID EmulateVmExit(ULONG64 vmcs01, ULONG64 vmcs12_va)
 
 	const VmExitInterruptionInformationField exception = { static_cast<ULONG32>(UtilVmRead(VmcsField::kVmExitIntrInfo)) };
 
-	PrintVMCS();
+//	PrintVMCS();
 	/*
 	1. Print about trapped reason
 	*/
@@ -339,8 +352,8 @@ VOID EmulateVmExit(ULONG64 vmcs01, ULONG64 vmcs12_va)
 	UtilVmWrite(VmcsField::kVmEntryIntrInfoField, 0);
 	UtilVmWrite(VmcsField::kVmEntryExceptionErrorCode, 0);
 
-	 PrintVMCS();
-	 PrintVMCS12(vmcs12_va);
+//	 PrintVMCS();
+//	 PrintVMCS12(vmcs12_va);
 }
 //---------------------------------------------------------------------------------------------------------------------//
 //Nested breakpoint dispatcher
@@ -571,7 +584,7 @@ VOID VmxoffEmulate(
 		if (GetVmxMode(GetVcpuVmx(guest_context)) != RootMode)
 		{
 			// Inject ...'
-			HYPERPLATFORM_LOG_DEBUG_SAFE(("Unimplemented third level virualization \r\n"));
+			HYPERPLATFORM_LOG_DEBUG_SAFE(("Vmxoff: Unimplemented third level virualization \r\n"));
 			VMfailInvalid(GetFlagReg(guest_context));
 			break;
 		}
@@ -766,7 +779,7 @@ VOID VmptrldEmulate(GuestContext* guest_context)
 		if (GetVmxMode(GetVcpuVmx(guest_context)) != RootMode)
 		{
 			// Inject ...'
-			HYPERPLATFORM_LOG_DEBUG_SAFE(("VMPTRLD Unimplemented third level virualization \r\n"));
+			HYPERPLATFORM_LOG_DEBUG_SAFE("VMPTRLD Unimplemented third level virualization %I64x \r\n", GetVcpuVmx(guest_context));
 			VMfailInvalid(GetFlagReg(guest_context)); 
 			break;
 		}
@@ -865,7 +878,7 @@ VOID VmreadEmulate(GuestContext* guest_context)
 		if (GetVmxMode(GetVcpuVmx(guest_context)) != RootMode)
 		{
 			// Inject ...'
-			HYPERPLATFORM_LOG_DEBUG_SAFE(("Unimplemented third level virualization \r\n"));
+			HYPERPLATFORM_LOG_DEBUG(" Vmread: Unimplemented third level virualization VMX: %I64x  VMCS12: %I64x \r\n", GetVcpuVmx(guest_context), vmcs12_pa);
 			VMfailInvalid(GetFlagReg(guest_context));
 			break;
 		}
@@ -914,17 +927,17 @@ VOID VmreadEmulate(GuestContext* guest_context)
 			if (operand_size == VMCS_FIELD_WIDTH_16BIT)
 			{
 				VmRead16(field, vmcs12_va, (PUSHORT)memAddress);
-				HYPERPLATFORM_LOG_DEBUG_SAFE("VMREAD16: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, *(PUSHORT)memAddress);
+				//HYPERPLATFORM_LOG_DEBUG_SAFE("VMREAD16: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, *(PUSHORT)memAddress);
 			}
 			if (operand_size == VMCS_FIELD_WIDTH_32BIT)
 			{
 				VmRead32(field, vmcs12_va, (PULONG32)memAddress);
-				HYPERPLATFORM_LOG_DEBUG_SAFE("VMREAD32: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, *(PULONG32)memAddress);
+				//HYPERPLATFORM_LOG_DEBUG_SAFE("VMREAD32: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, *(PULONG32)memAddress);
 			}
 			if (operand_size == VMCS_FIELD_WIDTH_64BIT || operand_size == VMCS_FIELD_WIDTH_NATURAL_WIDTH)
 			{
 				VmRead64(field, vmcs12_va, (PULONG64)memAddress);
-				HYPERPLATFORM_LOG_DEBUG_SAFE("VMREAD64: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, *(PULONG64)memAddress);
+				//HYPERPLATFORM_LOG_DEBUG_SAFE("VMREAD64: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, *(PULONG64)memAddress);
 			}
 		}
 
@@ -950,7 +963,7 @@ VOID VmwriteEmulate(GuestContext* guest_context)
 
 		if (GetvCpuMode(guest_context) != VmxMode)
 		{
-			HYPERPLATFORM_LOG_DEBUG_SAFE(("Current vCPU already in VMX mode ! \r\n"));
+			HYPERPLATFORM_LOG_DEBUG_SAFE((" Vmwrite: Current vCPU already in VMX mode ! \r\n"));
 			VMfailInvalid(GetFlagReg(guest_context));
 			break;
 		}
@@ -958,7 +971,7 @@ VOID VmwriteEmulate(GuestContext* guest_context)
 		if (GetVmxMode(GetVcpuVmx(guest_context)) != RootMode)
 		{
 			// Inject ...'
-			HYPERPLATFORM_LOG_DEBUG_SAFE(("Unimplemented third level virualization \r\n"));
+			HYPERPLATFORM_LOG_DEBUG(" Vmwrite: Unimplemented third level virualization VMX: %I64x  VMCS12: %I64x \r\n", GetVcpuVmx(guest_context), vmcs12_pa);
 			VMfailInvalid(GetFlagReg(guest_context));
 			break;
 		}
@@ -992,18 +1005,18 @@ VOID VmwriteEmulate(GuestContext* guest_context)
 		if (operand_size == VMCS_FIELD_WIDTH_16BIT)
 		{
 			VmWrite16(field, vmcs12_va, Value);
-			HYPERPLATFORM_LOG_DEBUG_SAFE("VMWRITE: field: %I64X base: %I64X Offset: %I64X Value: %I64X  \r\n", field, vmcs12_va, offset, (USHORT)Value);
+			//HYPERPLATFORM_LOG_DEBUG_SAFE("VMWRITE: field: %I64X base: %I64X Offset: %I64X Value: %I64X  \r\n", field, vmcs12_va, offset, (USHORT)Value);
 		}
 
 		if (operand_size == VMCS_FIELD_WIDTH_32BIT)
 		{
 			VmWrite32(field, vmcs12_va, Value);
-			HYPERPLATFORM_LOG_DEBUG_SAFE("VMWRITE: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, (ULONG32)Value);
+			//HYPERPLATFORM_LOG_DEBUG_SAFE("VMWRITE: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, (ULONG32)Value);
 		}
 		if (operand_size == VMCS_FIELD_WIDTH_64BIT || operand_size == VMCS_FIELD_WIDTH_NATURAL_WIDTH)
 		{
 			VmWrite64(field, vmcs12_va, Value);
-			HYPERPLATFORM_LOG_DEBUG_SAFE("VMWRITE: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, (ULONG64)Value);
+			//HYPERPLATFORM_LOG_DEBUG_SAFE("VMWRITE: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, (ULONG64)Value);
 		}
 
 
@@ -1084,7 +1097,7 @@ VOID VmlaunchEmulate(GuestContext* guest_context)
 		if (GetVmxMode(GetVcpuVmx(guest_context)) != RootMode)
 		{
 			// Inject ...'
-			HYPERPLATFORM_LOG_DEBUG_SAFE(("Unimplemented third level virualization \r\n"));
+			HYPERPLATFORM_LOG_DEBUG(" Vmlaunch: Unimplemented third level virualization VMX: %I64x  VMCS12: %I64x \r\n", GetVcpuVmx(guest_context), NestedvCPU->vmcs12_pa);
 			VMfailInvalid(GetFlagReg(guest_context));
 			break;
 		}
@@ -1188,7 +1201,7 @@ VOID VmresumeEmulate(GuestContext* guest_context)
 		if (GetVmxMode(GetVcpuVmx(guest_context)) != RootMode)
 		{
 			// Inject ...'
-			HYPERPLATFORM_LOG_DEBUG_SAFE(("vmresume: Unimplemented third level virualization \r\n"));
+			HYPERPLATFORM_LOG_DEBUG(" Vmresume: Unimplemented third level virualization VMX: %I64x  VMCS12: %I64x \r\n", GetVcpuVmx(guest_context), NestedvCPU->vmcs12_pa);
 			VMfailInvalid(GetFlagReg(guest_context));
 			break;
 		}
@@ -1246,7 +1259,7 @@ VOID VmresumeEmulate(GuestContext* guest_context)
 		//--------------------------------------------------------------------------------------//
 
 		
-		PrintVMCS();   
+//		PrintVMCS();   
 		
 		HYPERPLATFORM_COMMON_DBG_BREAK();
 
@@ -1276,7 +1289,7 @@ VOID VmptrstEmulate(GuestContext* guest_context)
 		if (GetVmxMode(GetVcpuVmx(guest_context)) != RootMode)
 		{
 			// Inject ...'
-			HYPERPLATFORM_LOG_DEBUG_SAFE(("Vmptrst: Unimplemented third level virualization \r\n"));
+			HYPERPLATFORM_LOG_DEBUG_SAFE("Vmptrst: Unimplemented third level virualization  %I64x \r\n", GetVcpuVmx(guest_context));
 			VMfailInvalid(GetFlagReg(guest_context));
 			break;
 		}
