@@ -520,9 +520,7 @@ extern "C" {
 		}
 		
 		IsEmulateVMExit = FALSE;
-	
-		HYPERPLATFORM_LOG_DEBUG(0, 0, "Mode: %x Reason: %x ", GetVmxMode(GetVcpuVmx(guest_context)), exit_reason);
-		
+	 
 		//after vmxon emulation
 		if (GetvCpuMode(guest_context) == VmxMode)
 		{
@@ -533,19 +531,24 @@ extern "C" {
 
 			__vmx_vmptrst(&vmcs_pa);
 			
-			if (GetVmxMode(vCPU) == GuestMode && vCPU->vmcs02_pa == vmcs_pa)
+			if (GetVmxMode(vCPU) == GuestMode)	 //L2 - OS
 			{
-				if (!VmmpHandleVmExitForL2(exit_reason, guest_context))
+				if (vCPU->vmcs02_pa == vmcs_pa)
 				{
-					VmmpHandleVmExitForL1(exit_reason, guest_context);
-				}
-				else 
-				{
-					//guest_context->stack->processor_data->vcpu_vmx->guest_irql = guest_context->irql;
-				}
+					if (exit_reason.fields.reason >= VmxExitReason::kVmon && exit_reason.fields.reason <= VmxExitReason::kVmwrite)
+					{
+						HYPERPLATFORM_LOG_DEBUG(0, 0, "Mode: %x Reason: %x ",GetVmxMode(GetVcpuVmx(guest_context)), exit_reason);
+					}
+
+					if (!VmmpHandleVmExitForL2(exit_reason, guest_context))
+					{
+						VmmpHandleVmExitForL1(exit_reason, guest_context);
+					}
+				} 
 			}
-			else
-			{
+			else     //L1 - VMM
+			{		
+				//HYPERPLATFORM_LOG_DEBUG("#1 Almost impossible come here Mode: %x vmcs02_pa: %I64x vmcs_pa: %I64x ", GetVmxMode(vCPU), vCPU->vmcs02_pa, vmcs_pa);
 				VmmpHandleVmExitForL1(exit_reason, guest_context);
 			}
 		}
