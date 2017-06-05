@@ -29,7 +29,7 @@ extern "C" {
 	//
 	BOOLEAN IsEmulateVMExit = FALSE;
 	// Whether VM-exit recording is enabled
-	static const long kVmmpEnableRecordVmExit = true;
+	static const long kVmmpEnableRecordVmExit = false;
 
 	// How many events should be recorded per a processor
 	static const long kVmmpNumberOfRecords = 100;
@@ -505,9 +505,8 @@ extern "C" {
 		{	 // Save them for ease of trouble shooting
 			const auto processor = KeGetCurrentProcessorNumberEx(nullptr);
 			auto &index = g_vmmp_next_history_index[processor];
-			auto &history = g_vmmp_vm_exit_history[processor][index];
-
-			history.gp_regs = *guest_context->gp_regs;
+			auto &history = g_vmmp_vm_exit_history[processor][index]; 
+		 
 			history.ip = guest_context->ip;
 			history.exit_reason = exit_reason;
 			history.exit_qualification = UtilVmRead(VmcsField::kExitQualification);
