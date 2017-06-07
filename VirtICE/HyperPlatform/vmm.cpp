@@ -1843,7 +1843,11 @@ extern "C" {
 		break;
 		}
 
+		/***************changed 2017.6.5 by wwq vmresume don't need invoke VmmpAdjustGuestInstructionPointer***********/
+		if (exit_reason.fields.reason != VmxExitReason::kVmresume)
+		{
+			VmmpAdjustGuestInstructionPointer(guest_context);
+		}
 		UtilVmWrite(VmcsField::kGuestRflags, guest_context->flag_reg.all);
-		VmmpAdjustGuestInstructionPointer(guest_context);
 	}
 }  // extern "C"
