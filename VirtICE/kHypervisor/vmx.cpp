@@ -247,7 +247,7 @@ VOID EmulateVmExit(ULONG64 vmcs01, ULONG64 vmcs12_va)
 
 	ULONG64   VMCS_VMEXIT_HANDLER = 0;
 	ULONG64   VMCS_VMEXIT_STACK = 0;
-	ULONG64   VMCS_VMEXIT_RFLAGs = 0;
+	ULONG_PTR   VMCS_VMEXIT_RFLAGs = 0;
 	ULONG64   VMCS_VMEXIT_CR4 = 0;
 	ULONG64   VMCS_VMEXIT_CR3 = 0;
 	ULONG64   VMCS_VMEXIT_CR0 = 0;
@@ -275,18 +275,18 @@ VOID EmulateVmExit(ULONG64 vmcs01, ULONG64 vmcs12_va)
 
 	const VmExitInterruptionInformationField exception = { static_cast<ULONG32>(UtilVmRead(VmcsField::kVmExitIntrInfo)) };
 
-//	PrintVMCS();
-	/*
-	1. Print about trapped reason
-	*/
-	/*
-	HYPERPLATFORM_LOG_DEBUG_SAFE("[EmulateVmExit]VMCS id %x", UtilVmRead(VmcsField::kVirtualProcessorId));
-	HYPERPLATFORM_LOG_DEBUG_SAFE("[EmulateVmExit]Trapped by %I64X ", UtilVmRead(VmcsField::kGuestRip));
-	HYPERPLATFORM_LOG_DEBUG_SAFE("[EmulateVmExit]Trapped Reason: %I64X ", exit_reason.fields.reason);
-	HYPERPLATFORM_LOG_DEBUG_SAFE("[EmulateVmExit]Trapped Intrreupt: %I64X ", exception.fields.interruption_type);
-	HYPERPLATFORM_LOG_DEBUG_SAFE("[EmulateVmExit]Trapped Intrreupt vector: %I64X ", exception.fields.vector);
-	HYPERPLATFORM_LOG_DEBUG_SAFE("[EmulateVmExit]Trapped kVmExitInstructionLen: %I64X ", UtilVmRead(VmcsField::kVmExitInstructionLen));
-	*/
+	//	PrintVMCS();
+		/*
+		1. Print about trapped reason
+		*/
+		/*
+		HYPERPLATFORM_LOG_DEBUG_SAFE("[EmulateVmExit]VMCS id %x", UtilVmRead(VmcsField::kVirtualProcessorId));
+		HYPERPLATFORM_LOG_DEBUG_SAFE("[EmulateVmExit]Trapped by %I64X ", UtilVmRead(VmcsField::kGuestRip));
+		HYPERPLATFORM_LOG_DEBUG_SAFE("[EmulateVmExit]Trapped Reason: %I64X ", exit_reason.fields.reason);
+		HYPERPLATFORM_LOG_DEBUG_SAFE("[EmulateVmExit]Trapped Intrreupt: %I64X ", exception.fields.interruption_type);
+		HYPERPLATFORM_LOG_DEBUG_SAFE("[EmulateVmExit]Trapped Intrreupt vector: %I64X ", exception.fields.vector);
+		HYPERPLATFORM_LOG_DEBUG_SAFE("[EmulateVmExit]Trapped kVmExitInstructionLen: %I64X ", UtilVmRead(VmcsField::kVmExitInstructionLen));
+		*/
 	if (VmxStatus::kOk != (status = static_cast<VmxStatus>(__vmx_vmptrld(&vmcs01))))
 	{
 		VmxInstructionError error = static_cast<VmxInstructionError>(UtilVmRead(VmcsField::kVmInstructionError));
@@ -318,11 +318,11 @@ VOID EmulateVmExit(ULONG64 vmcs01, ULONG64 vmcs12_va)
 	VmRead64(VmcsField::kHostFsBase, vmcs12_va, &VMCS_VMEXIT_HOST_FS);
 	VmRead64(VmcsField::kHostGsBase, vmcs12_va, &VMCS_VMEXIT_HOST_GS);
 	VmRead64(VmcsField::kHostTrBase, vmcs12_va, &VMCS_VMEXIT_HOST_TR);
-
-	VmRead64(VmcsField::kGuestRflags, vmcs12_va, &VMCS_VMEXIT_RFLAGs);
-
+	 
 	//Write VMCS01 for L1's VMExit handler
-	UtilVmWrite(VmcsField::kGuestRflags, VMCS_VMEXIT_RFLAGs);
+	FlagRegister rflags = { VMCS_VMEXIT_RFLAGs };
+	rflags.fields.reserved1 = 1;
+	UtilVmWrite(VmcsField::kGuestRflags, rflags.all);
 	UtilVmWrite(VmcsField::kGuestRip, VMCS_VMEXIT_HANDLER);
 	UtilVmWrite(VmcsField::kGuestRsp, VMCS_VMEXIT_STACK);
 	UtilVmWrite(VmcsField::kGuestCr0, VMCS_VMEXIT_CR0);
@@ -440,8 +440,9 @@ void SaveGuestMsrs(VCPUVMX* vcpu)
 	vcpu->guest_IA32_STAR = UtilReadMsr(Msr::kIa32Star);
 	vcpu->guest_IA32_LSTAR	= UtilReadMsr(Msr::kIa32Lstar);
 	vcpu->guest_IA32_FMASK	= UtilReadMsr(Msr::kIa32Fmask); 
-	HYPERPLATFORM_LOG_DEBUG_SAFE("DEBUG###Save GS base: %I64X kernel GS Base : %I64X \r\n ",
-		UtilReadMsr64(Msr::kIa32GsBase), vcpu->guest_gs_kernel_base);
+	
+	//HYPERPLATFORM_LOG_DEBUG_SAFE("DEBUG###Save GS base: %I64X kernel GS Base : %I64X \r\n ",
+	//	UtilReadMsr64(Msr::kIa32GsBase), vcpu->guest_gs_kernel_base);
 }
 //---------------------------------------------------------------------------------------------------------------------//
 void RestoreGuestMsrs(VCPUVMX* vcpu)
@@ -450,20 +451,22 @@ void RestoreGuestMsrs(VCPUVMX* vcpu)
 	UtilWriteMsr64(Msr::kIa32Star, vcpu->guest_IA32_STAR);
 	UtilWriteMsr64(Msr::kIa32Lstar, vcpu->guest_IA32_LSTAR);
 	UtilWriteMsr64(Msr::kIa32Fmask, vcpu->guest_IA32_FMASK);
-	HYPERPLATFORM_LOG_DEBUG_SAFE("DEBUG###Restore GS base: %I64X \r\n ", vcpu->guest_gs_kernel_base);
+	//HYPERPLATFORM_LOG_DEBUG_SAFE("DEBUG###Restore GS base: %I64X \r\n ", vcpu->guest_gs_kernel_base);
 }
 
 //---------------------------------------------------------------------------------------------------------------------//
 void SaveGuestCr8(VCPUVMX* vcpu, ULONG_PTR cr8)
 {
 	vcpu->guest_cr8 = cr8;
-	HYPERPLATFORM_LOG_DEBUG_SAFE("DEBUG###Save cr8 : %I64X \r\n ", vcpu->guest_cr8);
+	
+	//HYPERPLATFORM_LOG_DEBUG_SAFE("DEBUG###Save cr8 : %I64X \r\n ", vcpu->guest_cr8);
 }
 //---------------------------------------------------------------------------------------------------------------------//
 void RestoreGuestCr8(VCPUVMX* vcpu)
 {
 	__writecr8(vcpu->guest_cr8);
-	HYPERPLATFORM_LOG_DEBUG_SAFE("DEBUG###Restore cr8 : %I64X \r\n ", __readcr8());
+	
+	//HYPERPLATFORM_LOG_DEBUG_SAFE("DEBUG###Restore cr8 : %I64X \r\n ", __readcr8());
 }
  
 //---------------------------------------------------------------------------------------------------------------------//
