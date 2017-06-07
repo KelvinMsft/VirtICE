@@ -37,6 +37,56 @@ extern "C"
 extern ULONG_PTR*	 VmmpSelectRegister(_In_ ULONG index, _In_ GuestContext *guest_context);
 
 ULONG32				 g_vmx_extensions_bitmask;
+/*
+//---------------------------------------------------------------------------------------------------------------------//
+void SaveGuestKernelGsBase(VCPUVMX* vcpu)
+{
+	vcpu->HostKernelGsBase = UtilReadMsr64(Msr::kIa32KernelGsBase);
+}
+
+//---------------------------------------------------------------------------------------------------------------------//
+void LoadGuestKernelGsBase(VCPUVMX* vcpu)
+{
+	UtilWriteMsr64(Msr::kIa32KernelGsBase, vcpu->GuestKernelGsBase);
+}
+
+//---------------------------------------------------------------------------------------------------------------------//
+void SaveHostKernelGsBase(VCPUVMX* vcpu)
+{
+	vcpu->HostKernelGsBase = UtilReadMsr64(Msr::kIa32KernelGsBase);
+}
+
+//---------------------------------------------------------------------------------------------------------------------//
+void LoadHostKernelGsBase(VCPUVMX* vcpu)
+{
+	UtilWriteMsr64(Msr::kIa32KernelGsBase, vcpu->HostKernelGsBase);
+}
+*/
+
+//---------------------------------------------------------------------------------------------------------------------//
+void SaveGuestMsrs(VCPUVMX* vcpu)
+{
+	/*
+	* We cannot cache SHADOW_GS_BASE while the VCPU runs, as it can
+	* be updated at any time via SWAPGS, which we cannot trap.
+	*/  
+	vcpu->guest_gs_kernel_base = UtilReadMsr64(Msr::kIa32KernelGsBase);
+	vcpu->guest_IA32_STAR = UtilReadMsr(Msr::kIa32Star);
+	vcpu->guest_IA32_LSTAR = UtilReadMsr(Msr::kIa32Lstar);
+	vcpu->guest_IA32_FMASK = UtilReadMsr(Msr::kIa32Fmask);
+
+	//HYPERPLATFORM_LOG_DEBUG_SAFE("DEBUG###Save GS base: %I64X kernel GS Base : %I64X \r\n ",
+	//	UtilReadMsr64(Msr::kIa32GsBase), vcpu->guest_gs_kernel_base);
+}
+//---------------------------------------------------------------------------------------------------------------------//
+void RestoreGuestMsrs(VCPUVMX* vcpu)
+{ 
+	UtilWriteMsr64(Msr::kIa32KernelGsBase, vcpu->guest_gs_kernel_base); 
+	UtilWriteMsr64(Msr::kIa32Star, vcpu->guest_IA32_STAR);
+	UtilWriteMsr64(Msr::kIa32Lstar, vcpu->guest_IA32_LSTAR);
+	UtilWriteMsr64(Msr::kIa32Fmask, vcpu->guest_IA32_FMASK);
+	//HYPERPLATFORM_LOG_DEBUG_SAFE("DEBUG###Restore GS base: %I64X \r\n ", vcpu->guest_gs_kernel_base);
+}
 
 
 //---------------------------------------------------------------------------------------------------------------------//
@@ -320,7 +370,7 @@ ULONG64 DecodeVmclearOrVmptrldOrVmptrstOrVmxon(GuestContext* guest_context)
 
 //----------------------------------------------------------------------------------------------------------------//
 //What functions we support for nested
-void init_vmx_extensions_bitmask(void)
+void InitVmxExtensionMask(void)
 {
 	g_vmx_extensions_bitmask |=
 		MY_VMX_VIRTUAL_NMI |
@@ -348,7 +398,7 @@ void init_vmx_extensions_bitmask(void)
 
 //----------------------------------------------------------------------------------------------------------------//
 //Is ept-pointer validate
-BOOLEAN is_eptptr_valid(ULONG64 eptptr)
+BOOLEAN IsEptptrValid(ULONG64 eptptr)
 {
 	// [2:0] EPT paging-structure memory type
 	//       0 = Uncacheable (UC)
