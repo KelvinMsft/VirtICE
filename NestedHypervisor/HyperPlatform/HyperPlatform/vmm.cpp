@@ -38,6 +38,7 @@ static const long kVmmpNumberOfRecords = 100;
 // How many processors are supported for recording
 static const long kVmmpNumberOfProcessors = 2;
 
+static bool Test = FALSE;
 ////////////////////////////////////////////////////////////////////////////////
 //
 // types
@@ -199,6 +200,16 @@ _Use_decl_annotations_ bool __stdcall VmmVmExitHandler(VmmInitialStack *stack) {
 }
 #pragma warning(pop)
 
+
+// Set MTF on the current processor
+_Use_decl_annotations_ static void VmmpSetMonitorTrapFlag(bool enable) {
+
+	VmxProcessorBasedControls vm_procctl = {
+		static_cast<unsigned int>(UtilVmRead(VmcsField::kCpuBasedVmExecControl)) };
+	vm_procctl.fields.monitor_trap_flag = enable;
+	UtilVmWrite(VmcsField::kCpuBasedVmExecControl, vm_procctl.all);
+}
+
 // Dispatches VM-exit to a corresponding handler
 _Use_decl_annotations_ static void VmmpHandleVmExit(GuestContext *guest_context) {
   HYPERPLATFORM_PERFORMANCE_MEASURE_THIS_SCOPE();
@@ -318,10 +329,14 @@ _Use_decl_annotations_ static void VmmpHandleUnexpectedExit(
 _Use_decl_annotations_ static void VmmpHandleMonitorTrap(
     GuestContext *guest_context) {
   HYPERPLATFORM_PERFORMANCE_MEASURE_THIS_SCOPE();
-  auto processor_data = guest_context->stack->processor_data;
+
+  HYPERPLATFORM_LOG_DEBUG("L1 Montior Trap handler called \r\n"); 
  /* ShHandleMonitorTrapFlag(processor_data->sh_data,
                           processor_data->shared_data->shared_sh_data,
                           processor_data->ept_data);*/
+
+	VmmpSetMonitorTrapFlag(false);
+	
 }
 
 //exception handler #PF, #GP, #BP, #TF
@@ -418,8 +433,7 @@ _Use_decl_annotations_ static void VmmpHandleException(GuestContext *guest_conte
 	  HYPERPLATFORM_LOG_DEBUG_SAFE("interruption_type= %x, vector=: %x ", inject.fields.interruption_type, inject.fields.vector, guest_context->ip);
 
   }
-}//VMM異常捕?函數完
-
+}  
 // CPUID
 _Use_decl_annotations_ static void VmmpHandleCpuid(
     GuestContext *guest_context) {
@@ -441,8 +455,11 @@ _Use_decl_annotations_ static void VmmpHandleCpuid(
     guest_context->gp_regs->dx = cpu_info[3];
   }
   
-  HYPERPLATFORM_LOG_DEBUG_SAFE("Nested CPUID Called with id : %x sid: %x !!!!!!!!!!!!!!! \r\n", function_id, sub_function_id);
-  VmmpAdjustGuestInstructionPointer(guest_context->ip);
+   HYPERPLATFORM_LOG_DEBUG_SAFE("Nested CPUID Called with id : %x sid: %x !!!!!!!!!!!!!!! \r\n", function_id, sub_function_id);
+  
+   VmmpSetMonitorTrapFlag(true);
+    
+   VmmpAdjustGuestInstructionPointer(guest_context->ip);
 }
 
 // RDTSC
@@ -736,6 +753,7 @@ _Use_decl_annotations_ static void VmmpHandleDrAccess(
   const auto register_used =
       VmmpSelectRegister(exit_qualification.fields.gp_register, guest_context);
 
+  HYPERPLATFORM_LOG_DEBUG_SAFE("register_used: %I64x \r\n", *register_used);
   // Emulate the instruction
   switch (static_cast<MovDrDirection>(exit_qualification.fields.direction)) {
     case MovDrDirection::kMoveToDr:
@@ -935,8 +953,7 @@ _Use_decl_annotations_ static void VmmpHandleVmCall(
     guest_context->gp_regs->cx = return_address;
     guest_context->gp_regs->dx = guest_context->gp_regs->sp;
     guest_context->gp_regs->ax = guest_context->flag_reg.all;
-    guest_context->vm_continue = false;
-
+    guest_context->vm_continue = false; 
   } 
   else if (hypercall_number == HypercallNumber::kShEnablePageShadowing) 
   { 

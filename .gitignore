@@ -48,3 +48,7 @@ Temporary Items
 VirtICE/VirtICE.VC.VC.opendb
 VirtICE/VirtICE.VC.db
 *.sys
+*.log
+*.tlog
+*.obj
+NestedHypervisor/x64/Debug_WDK/capstone.lib
