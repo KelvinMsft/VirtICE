@@ -669,7 +669,7 @@ extern "C" {
 			break;
 		case VmxExitReason::kGdtrOrIdtrAccess: 
 		case VmxExitReason::kLdtrOrTrAccess:
-			IsHandled = VmmpHandleDescriptorTableAccessForL2(guest_context);
+			//IsHandled = VmmpHandleDescriptorTableAccessForL2(guest_context);
 			break; 
 		case VmxExitReason::kEptViolation:
 			
