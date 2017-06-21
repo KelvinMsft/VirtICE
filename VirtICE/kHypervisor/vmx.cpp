@@ -31,6 +31,7 @@ extern VOID			 LeaveVmxMode(GuestContext* guest_context);
 extern ULONG		 GetvCpuMode(GuestContext* guest_context); 
 void				 SaveGuestCr8(VCPUVMX* vcpu, ULONG_PTR cr8); 
 extern ProcessorData* GetProcessorData(GuestContext* guest_context);
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 //// Marco
 ////
@@ -479,7 +480,8 @@ VOID VmxonEmulate(GuestContext* guest_context)
 		InstructionPointer  =  { UtilVmRead64(VmcsField::kGuestRip) };
 		StackPointer		=  { UtilVmRead64(VmcsField::kGuestRsp) };   
 		guest_address		= DecodeVmclearOrVmptrldOrVmptrstOrVmxon(guest_context);
-		  
+		   
+		 
 		if (GetvCpuMode(guest_context) == VmxMode)
 		{
 			HYPERPLATFORM_LOG_DEBUG_SAFE(("Current vCPU already in VMX mode !"));
@@ -535,7 +537,9 @@ VOID VmxonEmulate(GuestContext* guest_context)
 
 		// vcpu etner vmx-root mode now
 		EnterVmxMode(guest_context);  
-		SetvCpuVmx(guest_context, nested_vmx);
+		SetvCpuVmx(guest_context, nested_vmx); 
+				  
+
 
 		HYPERPLATFORM_LOG_DEBUG("VMXON: Guest Instruction Pointer %I64X Guest Stack Pointer: %I64X  Guest VMXON_Region: %I64X stored at %I64x physical address\r\n",
 			InstructionPointer, StackPointer, vmxon_region_pa, guest_address);
@@ -543,6 +547,9 @@ VOID VmxonEmulate(GuestContext* guest_context)
 		HYPERPLATFORM_LOG_DEBUG("VMXON: Run Successfully with VMXON_Region:  %I64X Total Vitrualized Core: %x  Current Cpu: %x in Cpu Group : %x  Number: %x \r\n",
 			vmxon_region_pa, nested_vmx->InitialCpuNumber, number.Group, number.Number);
 		  
+		
+		HYPERPLATFORM_COMMON_DBG_BREAK();
+
 		BuildGernericVMCSMap();
 
 		VMSucceed(GetFlagReg(guest_context));
@@ -559,7 +566,11 @@ VOID VmxoffEmulate(
 	do
 	{
 		VCPUVMX* vcpu_vmx = NULL; 
+		ULONG_PTR InstructionPointer = { UtilVmRead64(VmcsField::kGuestRip) };
+		ULONG_PTR StackPointer = { UtilVmRead64(VmcsField::kGuestRsp) }; 
 
+		HYPERPLATFORM_LOG_DEBUG("VMXOFF: InstructionPointer : %I64x \r\n", InstructionPointer);
+		HYPERPLATFORM_LOG_DEBUG("VMXOFF: StackPointer : %I64x \r\n", StackPointer);
 		HYPERPLATFORM_COMMON_DBG_BREAK();
 		if (GetvCpuMode(guest_context) != VmxMode)
 		{
@@ -596,6 +607,7 @@ VOID VmxoffEmulate(
 
 		LeaveVmxMode(guest_context);
 
+
 		ExFreePool(vcpu_vmx);
 		vcpu_vmx = NULL;  
 
@@ -619,7 +631,13 @@ VOID VmclearEmulate(
 
 		InstructionPointer = { UtilVmRead64(VmcsField::kGuestRip) };
 		StackPointer = { UtilVmRead64(VmcsField::kGuestRsp) };
+
+		HYPERPLATFORM_LOG_DEBUG("VMCLEAR: InstructionPointer: %I64x \r\n", InstructionPointer);
+		HYPERPLATFORM_LOG_DEBUG("VMCLEAR: StackPointer: %I64x \r\n", StackPointer);
+		HYPERPLATFORM_COMMON_DBG_BREAK();
+
 		guest_address = DecodeVmclearOrVmptrldOrVmptrstOrVmxon(guest_context);
+
 		if (!guest_address)
 		{
 			HYPERPLATFORM_LOG_DEBUG_SAFE(("VMCLEAR: guest_address NULL ! \r\n"));
@@ -726,6 +744,10 @@ VOID VmptrldEmulate(GuestContext* guest_context)
 		InstructionPointer = { UtilVmRead64(VmcsField::kGuestRip) };
 		StackPointer = { UtilVmRead64(VmcsField::kGuestRsp) };
 
+		HYPERPLATFORM_LOG_DEBUG("VMPTRLD: InstructionPointer: %I64x \r\n", InstructionPointer);
+		HYPERPLATFORM_LOG_DEBUG("VMPTRLD: StackPointer: %I64x \r\n", StackPointer);
+		HYPERPLATFORM_COMMON_DBG_BREAK();
+
 		guest_address = DecodeVmclearOrVmptrldOrVmptrstOrVmxon(guest_context);
 		if (!guest_address)
 		{
@@ -810,7 +832,7 @@ VOID VmptrldEmulate(GuestContext* guest_context)
 		HYPERPLATFORM_LOG_DEBUG_SAFE("[VMPTRLD] VMCS12 PA: %I64X \r\n", vmcs12_region_pa);
 		HYPERPLATFORM_LOG_DEBUG_SAFE("[VMPTRLD] VMCS01 PA: %I64X VA: %I64X \r\n", nested_vmx->vmcs01_pa, UtilVaFromPa(nested_vmx->vmcs01_pa));
 		HYPERPLATFORM_LOG_DEBUG_SAFE("[VMPTRLD] Current Cpu: %x in Cpu Group : %x  Number: %x \r\n", nested_vmx->InitialCpuNumber, procnumber.Group, procnumber.Number);
-
+		  
 		VMSucceed(GetFlagReg(guest_context));
 
 	} while (FALSE);
@@ -881,18 +903,18 @@ VOID VmreadEmulate(GuestContext* guest_context)
 			if (operand_size == VMCS_FIELD_WIDTH_16BIT)
 			{
 				VmRead16(field, vmcs12_va, (PUSHORT)reg);
-				HYPERPLATFORM_LOG_DEBUG_SAFE("VMREAD16: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, *(PUSHORT)reg);
+				HYPERPLATFORM_LOG_DEBUG("VMREAD16: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, *(PUSHORT)reg);
 
 			}
 			if (operand_size == VMCS_FIELD_WIDTH_32BIT)
 			{
 				VmRead32(field, vmcs12_va, (PULONG32)reg);
-				HYPERPLATFORM_LOG_DEBUG_SAFE("VMREAD32: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, *(PULONG32)reg);
+				HYPERPLATFORM_LOG_DEBUG("VMREAD32: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, *(PULONG32)reg);
 			}
 			if (operand_size == VMCS_FIELD_WIDTH_64BIT || operand_size == VMCS_FIELD_WIDTH_NATURAL_WIDTH)
 			{
 				VmRead64(field, vmcs12_va, (PULONG64)reg);
-				HYPERPLATFORM_LOG_DEBUG_SAFE("VMREAD64: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, *(PULONG64)reg);
+				HYPERPLATFORM_LOG_DEBUG("VMREAD64: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, *(PULONG64)reg);
 			}
 
 		}
@@ -901,17 +923,17 @@ VOID VmreadEmulate(GuestContext* guest_context)
 			if (operand_size == VMCS_FIELD_WIDTH_16BIT)
 			{
 				VmRead16(field, vmcs12_va, (PUSHORT)memAddress);
-				//HYPERPLATFORM_LOG_DEBUG_SAFE("VMREAD16: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, *(PUSHORT)memAddress);
+				HYPERPLATFORM_LOG_DEBUG("VMREAD16: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, *(PUSHORT)memAddress);
 			}
 			if (operand_size == VMCS_FIELD_WIDTH_32BIT)
 			{
 				VmRead32(field, vmcs12_va, (PULONG32)memAddress);
-				//HYPERPLATFORM_LOG_DEBUG_SAFE("VMREAD32: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, *(PULONG32)memAddress);
+				HYPERPLATFORM_LOG_DEBUG("VMREAD32: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, *(PULONG32)memAddress);
 			}
 			if (operand_size == VMCS_FIELD_WIDTH_64BIT || operand_size == VMCS_FIELD_WIDTH_NATURAL_WIDTH)
 			{
 				VmRead64(field, vmcs12_va, (PULONG64)memAddress);
-				//HYPERPLATFORM_LOG_DEBUG_SAFE("VMREAD64: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, *(PULONG64)memAddress);
+				HYPERPLATFORM_LOG_DEBUG("VMREAD64: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, *(PULONG64)memAddress);
 			}
 		}
 
@@ -979,20 +1001,20 @@ VOID VmwriteEmulate(GuestContext* guest_context)
 		if (operand_size == VMCS_FIELD_WIDTH_16BIT)
 		{
 			VmWrite16(field, vmcs12_va, Value);
-			//HYPERPLATFORM_LOG_DEBUG_SAFE("VMWRITE: field: %I64X base: %I64X Offset: %I64X Value: %I64X  \r\n", field, vmcs12_va, offset, (USHORT)Value);
+			HYPERPLATFORM_LOG_DEBUG("VMWRITE: field: %I64X base: %I64X Offset: %I64X Value: %I64X  \r\n", field, vmcs12_va, offset, (USHORT)Value);
 		}
 
 		if (operand_size == VMCS_FIELD_WIDTH_32BIT)
 		{
 			VmWrite32(field, vmcs12_va, Value);
-			//HYPERPLATFORM_LOG_DEBUG_SAFE("VMWRITE: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, (ULONG32)Value);
+			HYPERPLATFORM_LOG_DEBUG("VMWRITE: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, (ULONG32)Value);
 		}
 		if (operand_size == VMCS_FIELD_WIDTH_64BIT || operand_size == VMCS_FIELD_WIDTH_NATURAL_WIDTH)
 		{
 			VmWrite64(field, vmcs12_va, Value);
-			//HYPERPLATFORM_LOG_DEBUG_SAFE("VMWRITE: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, (ULONG64)Value);
+			HYPERPLATFORM_LOG_DEBUG("VMWRITE: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, (ULONG64)Value);
 		}
-
+		  
 
 		VMSucceed(GetFlagReg(guest_context));
 	} while (FALSE);
@@ -1254,6 +1276,11 @@ VOID VmptrstEmulate(GuestContext* guest_context)
 		ULONG64				vmcs12_region_pa = *(PULONG64)DecodeVmclearOrVmptrldOrVmptrstOrVmxon(guest_context);
 		ULONG64				vmcs12_region_va = (ULONG64)UtilVaFromPa(vmcs12_region_pa);
 		ULONG				vcpu_index = KeGetCurrentProcessorNumberEx(&procnumber);
+
+
+		HYPERPLATFORM_LOG_DEBUG("VMPTRST: InstructionPointer: %I64x \r\n", InstructionPointer);
+		HYPERPLATFORM_LOG_DEBUG("VMPTRST: StackPointer: %I64x \r\n", StackPointer);
+		HYPERPLATFORM_COMMON_DBG_BREAK();
 
 		if (GetvCpuMode(guest_context) != VmxMode)
 		{

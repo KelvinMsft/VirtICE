@@ -405,4 +405,19 @@ BOOLEAN IsEptptrValid(ULONG64 eptptr)
 		return FALSE;
 	return TRUE;
 }
+
+
+// Set MTF on the current processor
+_Use_decl_annotations_ void	IceSetMonitorTrapFlag(bool enable)
+{
+	VmxProcessorBasedControls vm_procctl = {
+		static_cast<unsigned int>(UtilVmRead(VmcsField::kCpuBasedVmExecControl)) };
+	vm_procctl.fields.monitor_trap_flag = enable;
+
+	FlagRegister Flags ={UtilVmRead64(VmcsField::kGuestRflags)};
+	Flags.fields.intf = !enable;
+	UtilVmWrite(VmcsField::kGuestRflags, Flags.all);
+
+	UtilVmWrite(VmcsField::kCpuBasedVmExecControl, vm_procctl.all); 
+}
 }

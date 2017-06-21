@@ -16,6 +16,7 @@
 #include "performance.h"
 #include "vmcs.h"
 #include "vmx.h"
+#include "vmx_common.h"
 #pragma warning(disable: 4505)
 extern "C" {
 	////////////////////////////////////////////////////////////////////////////////
@@ -229,8 +230,7 @@ extern "C" {
 	VOID EnterVmxMode(GuestContext* guest_context)
 	{
 		SetvCpuMode(guest_context, VmxMode);
-	}
-
+	} 
 	//----------------------------------------------------------------------------------------------------------------//
 	VOID LeaveVmxMode(GuestContext* guest_context)
 	{
@@ -784,15 +784,14 @@ extern "C" {
 		HYPERPLATFORM_COMMON_BUG_CHECK(HyperPlatformBugCheck::kUnexpectedVmExit,
 			reinterpret_cast<ULONG_PTR>(guest_context), UtilVmRead(VmcsField::kVmExitReason),
 			UtilVmRead(VmcsField::kVmInstructionError));
-	}
-
-	// MTF VM-exit
-	_Use_decl_annotations_ static void VmmpHandleMonitorTrap(GuestContext *guest_context)
-	{
-		UNREFERENCED_PARAMETER(guest_context);
-	}
-
-
+	} 
+	//---------------------------------------------------------------------------------------------------------------------//
+	_Use_decl_annotations_ static void VmmpHandleMonitorTrap(GuestContext *guest_context) 
+	{   
+		HYPERPLATFORM_COMMON_DBG_BREAK(); 
+		VmmpAdjustGuestInstructionPointer(guest_context);
+	} 
+	//---------------------------------------------------------------------------------------------------------------------//
 	// Interrupt
 	_Use_decl_annotations_ static void VmmpHandleException(
 		GuestContext *guest_context) {
@@ -887,8 +886,6 @@ extern "C" {
 		guest_context->gp_regs->bx = cpu_info[1];
 		guest_context->gp_regs->cx = cpu_info[2];
 		guest_context->gp_regs->dx = cpu_info[3];
-
-		HYPERPLATFORM_LOG_DEBUG("Root CPUID Called with id : %x sid: %x !!!!!!!!!!!!!!! \r\n", function_id, sub_function_id);
 		VmmpAdjustGuestInstructionPointer(guest_context);
 	}
 
@@ -1008,18 +1005,49 @@ extern "C" {
 					{
 						msr_value.LowPart = guest_context->stack->processor_data->VmxEptMsr.LowPart;
 						msr_value.HighPart = guest_context->stack->processor_data->VmxEptMsr.HighPart;
+						HYPERPLATFORM_LOG_DEBUG("Read kIa32VmxEptVpidCap");
 					}
 					break;
 					case Msr::kIa32FeatureControl:
 					{
 						msr_value.LowPart = guest_context->stack->processor_data->Ia32FeatureMsr.LowPart;
 						msr_value.HighPart = guest_context->stack->processor_data->Ia32FeatureMsr.HighPart;
+						HYPERPLATFORM_LOG_DEBUG("Read kIa32FeatureControl");
 					}
 					break;
 					case Msr::kIa32VmxBasic:
 					{
 						msr_value.LowPart = guest_context->stack->processor_data->VmxBasicMsr.LowPart;
 						msr_value.HighPart = guest_context->stack->processor_data->VmxBasicMsr.HighPart;
+						HYPERPLATFORM_LOG_DEBUG("Read kIa32VmxBasic");
+					}
+					break;
+
+					case Msr::kIa32VmxTrueExitCtls:  
+					{ 
+						msr_value.QuadPart = UtilReadMsr64(msr);
+						HYPERPLATFORM_LOG_DEBUG("Read Ia32VmxTrueProcBasedCtrls");
+					}
+					case Msr::kIa32VmxProcBasedCtls:
+					{ 
+						msr_value.QuadPart = UtilReadMsr64(msr);
+
+						VmxProcessorBasedControls HighPart = { msr_value.HighPart };  
+						VmxProcessorBasedControls LowPart = { msr_value.LowPart }; 
+						LowPart.fields.use_tpr_shadow = false;   
+						msr_value.HighPart = HighPart.all;
+						msr_value.LowPart = LowPart.all;
+
+						HYPERPLATFORM_LOG_DEBUG("Read Ia32VmxProcBasedCtrls RealMsr: %I64x %I64X ", msr_value.QuadPart, UtilReadMsr64(msr));
+
+
+					}
+					break; 
+					case Msr::kIa32VmxTruePinbasedCtls:
+					case Msr::kIa32VmxPinbasedCtls:
+					{ 
+						msr_value.QuadPart = UtilReadMsr64(msr);
+						HYPERPLATFORM_LOG_DEBUG("Read kIa32VmxPinbasedCtls %x ", msr);
 					}
 					break;
 					case Msr::kIa32KernelGsBase:
@@ -1053,19 +1081,16 @@ extern "C" {
 			else
 			{
 				switch (msr)
-				{
-					case Msr::kIa32VmxEptVpidCap:
-						guest_context->stack->processor_data->VmxEptMsr.QuadPart = msr_value.QuadPart;
-					break;
+				{ 
 					case Msr::kIa32FeatureControl:
+					{
 						guest_context->stack->processor_data->Ia32FeatureMsr.QuadPart = msr_value.QuadPart;
-					break;
-					case  Msr::kIa32VmxBasic:
-						guest_context->stack->processor_data->VmxBasicMsr.QuadPart = msr_value.QuadPart;
+						HYPERPLATFORM_LOG_DEBUG("Write kIa32FeatureControl");
+					}
 					break;
 					case Msr::kIa32KernelGsBase:
 						guest_context->stack->processor_data->GuestKernelGsBase.QuadPart = msr_value.QuadPart;
-					break;
+					break;  
 					default:
 						UtilWriteMsr64(msr, msr_value.QuadPart); 
 					break;
@@ -1464,13 +1489,13 @@ extern "C" {
 				if (UtilIsX86Pae()) {
 					UtilLoadPdptes(UtilVmRead(VmcsField::kGuestCr3));
 				}
-				UtilInvvpidAllContext();
+				//UtilInvvpidAllContext();
 				const Cr4 cr4_fixed0 = { UtilReadMsr(Msr::kIa32VmxCr4Fixed0) };
 				const Cr4 cr4_fixed1 = { UtilReadMsr(Msr::kIa32VmxCr4Fixed1) };
 				Cr4 cr4 = { *register_used };
 				cr4.all &= cr4_fixed1.all;
 				cr4.all |= cr4_fixed0.all;
-				UtilVmWrite(VmcsField::kGuestCr4, cr4.all);
+				//UtilVmWrite(VmcsField::kGuestCr4, cr4.all);
 				UtilVmWrite(VmcsField::kCr4ReadShadow, cr4.all);
 				break;
 			}
@@ -1956,6 +1981,7 @@ extern "C" {
 		{
 		case VmxExitReason::kVmon:
 		{
+			
 			VmxonEmulate(guest_context);
 		}
 		break;

@@ -72,8 +72,14 @@ struct ProcessorData {
 	ULONG64 xsave_inst_mask;                  //!< A mask to save state components
 	UCHAR fxsave_area[512 + 16];              //!< For fxsave (+16 for alignment)
 	LARGE_INTEGER Ia32FeatureMsr;			  //!< For Msr Read / Write
+	LARGE_INTEGER Ia32VmxProcBasedCtrls;	  //!< For Msr Read / Write   
+	LARGE_INTEGER Ia32VmxProcBasedCtrlsForOff;//!< For Msr Read / Write 
+	LARGE_INTEGER Ia32VmxTrueProcBasedCtrls;  //!< For Msr Read / Write   
+	LARGE_INTEGER Ia32VmxPinsBasedCtrls;	  //!< For Msr Read / Write     
+	LARGE_INTEGER Ia32VmxVmExitCtrls;		  //!< For Msr Read / Write   
+	LARGE_INTEGER Ia32VmxVmEntryCtrls;		  //!< For Msr Read / Write    
 	LARGE_INTEGER VmxBasicMsr;				  //!< For Msr Read / Write
-	LARGE_INTEGER VmxEptMsr;				  //!< For Msr Read / Write   
+	LARGE_INTEGER VmxEptMsr;				  //!< For Msr Read / Write     
 	LARGE_INTEGER HostKernelGsBase;			  ///guest_gs_kernel_base 
 	LARGE_INTEGER GuestKernelGsBase;		  ///guest_gs_kernel_base  
 	VCPUVMX*		vcpu_vmx;				  //!< For nested vmx context

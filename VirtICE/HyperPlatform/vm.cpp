@@ -502,22 +502,48 @@ extern "C" {
 		*reinterpret_cast<ProcessorData **>(vmm_stack_data) = processor_data;
 
 
-		Ia32VmxBasicMsr msr1 = { UtilReadMsr64(Msr::kIa32VmxBasic) };
-		Ia32FeatureControlMsr msr2 = { UtilReadMsr64(Msr::kIa32FeatureControl) };
-		msr2.fields.lock = false;
-		msr2.fields.enable_vmxon = true;
+		const auto use_true_msrs = Ia32VmxBasicMsr{
+			UtilReadMsr64(Msr::kIa32VmxBasic) }.fields.vmx_capability_hint;
 
-		processor_data->VmxBasicMsr.QuadPart = msr1.all;
-		processor_data->Ia32FeatureMsr.QuadPart = msr2.all;
-		processor_data->VmxEptMsr.QuadPart = 0;
+		Ia32VmxBasicMsr VmxBasicMsr = { UtilReadMsr64(Msr::kIa32VmxBasic) };
+		HYPERPLATFORM_LOG_DEBUG("Ia32VmxBasicMsr: %I64X %I64x", UtilReadMsr64(Msr::kIa32VmxBasic), VmxBasicMsr.all);
 
+		Ia32FeatureControlMsr FeatureCtrl = { UtilReadMsr64(Msr::kIa32FeatureControl) };
+		HYPERPLATFORM_LOG_DEBUG("Ia32FeatureControlMsr: %I64X %I64x", UtilReadMsr64(Msr::kIa32FeatureControl), FeatureCtrl.all);
+		FeatureCtrl.fields.lock = false;
+		FeatureCtrl.fields.enable_vmxon = true;
+
+		LARGE_INTEGER ProcBasedCtrl;
+		ProcBasedCtrl.QuadPart = UtilReadMsr64(Msr::kIa32VmxProcBasedCtls);   
+		HYPERPLATFORM_LOG_DEBUG("kIa32VmxProcBasedCtls: %I64X  %I64x", UtilReadMsr64(Msr::kIa32VmxProcBasedCtls), ProcBasedCtrl.QuadPart);
+		 
+		LARGE_INTEGER PinBaseCtrl ; 
+		PinBaseCtrl.QuadPart = UtilReadMsr64(Msr::kIa32VmxPinbasedCtls);
+		HYPERPLATFORM_LOG_DEBUG("kIa32VmxPinbasedCtls: %I64X  %I64x", UtilReadMsr64(Msr::kIa32VmxPinbasedCtls), PinBaseCtrl.QuadPart);
+
+		processor_data->VmxBasicMsr.QuadPart = VmxBasicMsr.all;
+		processor_data->Ia32FeatureMsr.QuadPart = FeatureCtrl.all;
+		processor_data->VmxEptMsr.QuadPart = 0;	//do not support yet.
+		 
+		ProcBasedCtrl.HighPart = 0;
+ 		processor_data->Ia32VmxProcBasedCtrls.QuadPart = ProcBasedCtrl.QuadPart;
+ 		processor_data->Ia32VmxPinsBasedCtrls = PinBaseCtrl;
+
+	
 		// Set up VMCS
 		if (!VmpEnterVmxMode(processor_data)) {
 			goto ReturnFalse;
 		}
+		 
+		HYPERPLATFORM_LOG_DEBUG("ProcBasedCtrl: %I64X", UtilReadMsr64(Msr::kIa32VmxProcBasedCtls));
+
 		if (!VmpInitializeVmcs(processor_data)) {
 			goto ReturnFalseWithVmxOff;
 		}
+		 
+		HYPERPLATFORM_LOG_DEBUG("ProcBasedCtrl: %I64X", UtilReadMsr64(Msr::kIa32VmxProcBasedCtls));
+
+
 		if (!VmpSetupVmcs(processor_data, guest_stack_pointer,
 			guest_instruction_pointer, vmm_stack_base)) {
 			goto ReturnFalseWithVmxOff;
@@ -691,8 +717,8 @@ extern "C" {
 		Cr4 cr4_mask = {};
 		Cr4 cr4_shadow = { __readcr4() };
 		// For example, when we want to hide CR4.VMXE from the guest, comment in below
-		// cr4_mask.fields.vmxe = true;
-		// cr4_shadow.fields.vmxe = false;
+		cr4_mask.fields.vmxe = true;
+		cr4_shadow.fields.vmxe = false;
 
 		// See: PDPTE Registers
 		// If PAE paging would be in use following an execution of MOV to CR0 or MOV
@@ -707,8 +733,9 @@ extern "C" {
 			cr4_mask.fields.pge = true;
 			cr4_mask.fields.pse = true;
 			cr4_mask.fields.smep = true;
-		}
+		}	 
 
+		 
 		// clang-format off
 		auto error = VmxStatus::kOk;
 

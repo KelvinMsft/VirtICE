@@ -55,4 +55,5 @@ void	SaveHostKernelGsBase(ProcessorData* vcpu);
 void	LoadHostKernelGsBase(ProcessorData* vcpu);
 
 
+void	IceSetMonitorTrapFlag(bool enable);
 }

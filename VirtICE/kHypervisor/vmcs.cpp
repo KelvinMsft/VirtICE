@@ -605,10 +605,11 @@ BOOLEAN is_vmcs_field_supported(VmcsField encoding)
 	case VmcsField::kTscOffsetHigh:
 	case VmcsField::kEptpListAddress:
 	case VmcsField::kEptpListAddressHigh:
-	case VmcsField::kPmlAddress:
-#if MY_SUPPORT_X86_64
+	case VmcsField::kPmlAddress: 
+#if 1// MY_SUPPORT_X86_64
 	case VmcsField::kVirtualApicPageAddr:
 	case VmcsField::kVirtualApicPageAddrHigh:
+	case VmcsField::kHostIa32Efer:
 #endif
 #if MY_SUPPORT_VMX >= 2
 	case VmcsField::kApicAccessAddr:
