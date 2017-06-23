@@ -727,6 +727,379 @@ BOOLEAN is_vmcs_field_supported(VmcsField encoding)
 		return 0;
 	}
 }
+//-----------------------------------------------------------------------------------------------------//
+CHAR* GetVmcsFieldNameByIndex(VmcsField encoding)
+{
+	switch (encoding)
+	{
+	
+	/* VMCS 16-bit control fields */
+	/* binary 0000_00xx_xxxx_xxx0 */
+	case VmcsField::kVirtualProcessorId:
+		return "VirtualProcessorId";
+	case VmcsField::kGuestInterruptStatus:
+		return "GuestInterruptStatus"; 
+	/* VMCS 16-bit host-state fields */
+	/* binary 0000_11xx_xxxx_xxx0 */
+	case VmcsField::kHostEsSelector:
+		return "HostEsSelector";
+	case VmcsField::kHostCsSelector:
+		return "HostCsSelector";
+	case VmcsField::kHostSsSelector:
+		return "HostSsSelector";
+	case VmcsField::kHostDsSelector:
+		return "HostDsSelector";
+	case VmcsField::kHostFsSelector:
+		return "HostFsSelector";
+	case VmcsField::kHostGsSelector:
+		return "HostGsSelector";
+	case VmcsField::kHostTrSelector:
+		return "HostTrSelector"; 
+		/* VMCS 16-bit guest-state fields */
+		/* binary 0000_10xx_xxxx_xxx0 */
+	case VmcsField::kGuestEsSelector:
+		return "GuestEsSelector";
+	case VmcsField::kGuestCsSelector:
+		return "GuestCsSelector";
+	case VmcsField::kGuestSsSelector:
+		return "GuestSsSelector";
+	case VmcsField::kGuestDsSelector:
+		return "GuestDsSelector";
+	case VmcsField::kGuestFsSelector:
+		return "GuestFsSelector";
+	case VmcsField::kGuestGsSelector:
+		return "GuestGsSelector";
+	case VmcsField::kGuestTrSelector:
+		return "GuestTrSelector";
+	case VmcsField::kGuestLdtrSelector:
+		return "GuestLdtrSelector";
+	case VmcsField::kGuestPmlIndex:
+		return "GuestPmlIndex"; 
+
+		/* VMCS 32_bit control fields */
+		/* binary 0100_00xx_xxxx_xxx0 */
+	case VmcsField::kPinBasedVmExecControl:
+		return "PinBasedVmExecControl";
+	case VmcsField::kCpuBasedVmExecControl:
+		return "CpuBasedVmExecControl";
+	case VmcsField::kExceptionBitmap:
+		return "ExceptionBitmap";
+	case VmcsField::kPageFaultErrorCodeMask:
+		return "PageFaultErrorCodeMask";
+	case VmcsField::kPageFaultErrorCodeMatch:
+		return "PageFaultErrorCodeMatch";
+	case VmcsField::kCr3TargetCount:
+		return "Cr3TargetCount";
+	case VmcsField::kVmExitControls:
+		return "VmExitControls";
+	case VmcsField::kVmExitMsrStoreCount:
+		return "VmExitMsrStoreCount";
+	case VmcsField::kVmExitMsrLoadCount:
+		return "VmExitMsrLoadCount";
+	case VmcsField::kVmEntryControls:
+		return "VmEntryControls";
+	case VmcsField::kVmEntryMsrLoadCount:
+		return "VmEntryMsrLoadCount";
+	case VmcsField::kVmEntryIntrInfoField:
+		return "VmEntryIntrInfoField";
+	case VmcsField::kVmEntryExceptionErrorCode:
+		return "VmEntryExceptionErrorCode";
+	case VmcsField::kVmEntryInstructionLen:
+		return "VmEntryInstructionLen";
+	case VmcsField::kPleGap:
+		return "PleGap";
+	case VmcsField::kPleWindow:
+		return "PleWindow";
+	case VmcsField::kTprThreshold:
+		return "TprThreshold";    
+	case VmcsField::kSecondaryVmExecControl: 
+		return "SecondaryVmExecControl";
+		/* VMCS 32-bit read only data fields */
+		/* binary 0100_01xx_xxxx_xxx0 */
+	
+	case VmcsField::kVmInstructionError:
+		return "VmInstructionError";
+	case VmcsField::kVmExitReason:
+		return "VmExitReason";
+	case VmcsField::kVmExitIntrInfo:
+		return "VmExitIntrInfo";
+	case VmcsField::kVmExitIntrErrorCode:
+		return "VmExitIntrErrorCode";
+	case VmcsField::kIdtVectoringInfoField:
+		return "IdtVectoringInfoField";
+	case VmcsField::kIdtVectoringErrorCode:
+		return "IdtVectoringErrorCode";
+	case VmcsField::kVmExitInstructionLen:
+		return "VmExitInstructionLen";
+	case VmcsField::kVmxInstructionInfo:
+		return "VmxInstructionInfo"; 
+
+		/* VMCS 32-bit guest-state fields */
+		/* binary 0100_10xx_xxxx_xxx0 */
+	case VmcsField::kGuestEsLimit:
+		return "GuestEsLimit";
+	case VmcsField::kGuestCsLimit:
+		return "GuestCsLimit";
+	case VmcsField::kGuestSsLimit:
+		return "GuestSsLimit";
+	case VmcsField::kGuestDsLimit:
+		return "GuestDsLimit";
+	case VmcsField::kGuestFsLimit:
+		return "GuestFsLimit";
+	case VmcsField::kGuestGsLimit:
+		return "GuestGsLimit";
+	case VmcsField::kGuestLdtrLimit:
+		return "GuestLdtrLimit";
+	case VmcsField::kGuestTrLimit:
+		return "GuestTrLimit";
+	case VmcsField::kGuestGdtrLimit:
+		return "GuestGdtrLimit";
+	case VmcsField::kGuestIdtrLimit:
+		return "GuestIdtrLimit";
+	case VmcsField::kGuestEsArBytes:
+		return "GuestEsArBytes";
+	case VmcsField::kGuestCsArBytes:
+		return "GuestCsArBytes";
+	case VmcsField::kGuestSsArBytes:
+		return "GuestSsArBytes";
+	case VmcsField::kGuestDsArBytes:
+		return "GuestDsArBytes";
+	case VmcsField::kGuestFsArBytes:
+		return "GuestFsArBytes";
+	case VmcsField::kGuestGsArBytes:
+		return "GuestGsArBytes";
+	case VmcsField::kGuestLdtrArBytes:
+		return "GuestLdtrArBytes";
+	case VmcsField::kGuestTrArBytes:
+		return "GuestTrArBytes";
+	case VmcsField::kGuestInterruptibilityInfo:
+		return "GuestInterruptibilityInfo";
+	case VmcsField::kGuestActivityState:
+		return "GuestActivityState";
+	case VmcsField::kGuestSmbase:
+		return "GuestSmbase";
+	case VmcsField::kGuestSysenterCs:
+		return "GuestSysenterCs";
+	case VmcsField::kVmxPreemptionTimerValue:
+		return "VmxPreemptionTimerValue";
+
+		/* VMCS 32-bit host-state fields */
+		/* binary 0100_11xx_xxxx_xxx0 */
+	case  VmcsField::kHostIa32SysenterCs:
+		return "HostIa32SysenterCs";
+		/* VMCS 64-bit control fields */
+		/* binary 0010_00xx_xxxx_xxx0 */
+	case VmcsField::kIoBitmapA:
+		return "IoBitmapA";
+	case VmcsField::kIoBitmapAHigh:
+		return "IoBitmapAHigh";
+	case VmcsField::kIoBitmapB:
+		return "IoBitmapB";
+	case VmcsField::kIoBitmapBHigh:
+		return "IoBitmapBHigh";
+	case VmcsField::kMsrBitmap:
+		return "MsrBitmap";
+	case VmcsField::kMsrBitmapHigh:
+		return "MsrBitmapHigh";
+	case VmcsField::kVmExitMsrStoreAddr:
+		return "VmExitMsrStoreAddr";
+	case VmcsField::kVmExitMsrStoreAddrHigh:
+		return "VmExitMsrStoreAddrHigh";
+	case VmcsField::kVmExitMsrLoadAddr:
+		return "VmExitMsrLoadAddr";
+	case VmcsField::kVmExitMsrLoadAddrHigh:
+		return "VmExitMsrLoadAddrHigh";
+	case VmcsField::kVmEntryMsrLoadAddr:
+		return "VmEntryMsrLoadAddr";
+	case VmcsField::kVmEntryMsrLoadAddrHigh:
+		return "VmEntryMsrLoadAddrHigh";
+	case VmcsField::kExecutiveVmcsPointer:
+		return "ExecutiveVmcsPointer";
+	case VmcsField::kExecutiveVmcsPointerHigh:
+		return "ExecutiveVmcsPointerHigh";
+	case VmcsField::kTscOffset:
+		return "TscOffset";
+	case VmcsField::kTscOffsetHigh:
+		return "TscOffsetHigh";
+	case VmcsField::kEptpListAddress:
+		return "EptpListAddress";
+	case VmcsField::kEptpListAddressHigh:
+		return "EptpListAddressHigh";
+	case VmcsField::kPmlAddress:
+		return "PmlAddress";
+#if 1// MY_SUPPORT_X86_64
+	case VmcsField::kVirtualApicPageAddr:
+		return "VirtualApicPageAddr";
+	case VmcsField::kVirtualApicPageAddrHigh:
+		return "VirtualApicPageAddrHigh";
+	case VmcsField::kHostIa32Efer:
+		return "HostIa32Efer";
+#endif
+#if MY_SUPPORT_VMX >= 2
+	case VmcsField::kApicAccessAddr:
+		return "ApicAccessAddr";
+	case VmcsField::kApicAccessAddrHigh:
+		return "ApicAccessAddrHigh";
+	case VmcsField::kEptPointer:
+		return "EptPointer";
+	case VmcsField::kEptPointerHigh:	
+		return "EptPointerHigh";
+#endif
+	 
+#if MY_SUPPORT_VMX >= 2
+		/* VMCS 64-bit read only data fields */
+		/* binary 0010_01xx_xxxx_xxx0 */
+	case VmcsField::kGuestPhysicalAddress:
+		return "GuestPhysicalAddress";
+	case VmcsField::kGuestPhysicalAddressHigh:
+		return "GuestPhysicalAddressHigh";
+#endif
+
+		/* VMCS 64-bit guest state fields */
+		/* binary 0010_10xx_xxxx_xxx0 */
+	case VmcsField::kVmcsLinkPointer:
+		return "VmcsLinkPointer";
+	case VmcsField::kVmcsLinkPointerHigh:
+		return "VmcsLinkPointerHigh";
+	case VmcsField::kGuestIa32Debugctl:
+		return "GuestIa32Debugctl";
+	case VmcsField::kGuestIa32DebugctlHigh:
+		return "GuestIa32DebugctlHigh";
+#if MY_SUPPORT_VMX >= 2
+	case VmcsField::kGuestIa32Pat:
+		return "GuestIa32Pat";
+	case VmcsField::kGuestIa32PatHigh:
+		return "GuestIa32PatHigh";
+	case VmcsField::kGuestIa32Efer:
+		return "GuestIa32Efer";
+	case VmcsField::kGuestIa32EferHigh:
+		return "GuestIa32EferHigh";
+	case VmcsField::kGuestPdptr0:
+		return "GuestPdptr0";
+	case VmcsField::kGuestPdptr0High:
+		return "GuestPdptr0High";
+	case VmcsField::kGuestPdptr1:
+		return "GuestPdptr1";
+	case VmcsField::kGuestPdptr1High:
+		return "GuestPdptr1High";
+	case VmcsField::kGuestPdptr2:
+		return "GuestPdptr2";
+	case VmcsField::kGuestPdptr2High:
+		return "GuestPdptr2High";
+	case VmcsField::kGuestPdptr3:
+		return "GuestPdptr3";
+	case VmcsField::kGuestPdptr3High:
+		return "GuestPdptr3High";
+#endif
+	 
+#if MY_SUPPORT_VMX >= 3
+		/* VMCS 64-bit host state fields */
+		/* binary 0010_11xx_xxxx_xxx0 */
+	case VmcsField::kGuestIa32Pat:
+	case VmcsField::kGuestIa32PatHigh:
+	case VmcsField::kGuestIa32Efer:
+	case VmcsField::kGuestIa32EferHigh:
+		return 1;
+#endif
+		/*
+		/* VMCS natural width control fields
+		*/
+		/* binary 0110_00xx_xxxx_xxx0 */
+	case VmcsField::kCr0GuestHostMask:
+		return "Cr0GuestHostMask";
+	case VmcsField::kCr4GuestHostMask:
+		return "Cr4GuestHostMask";
+	case VmcsField::kCr0ReadShadow:	
+		return "Cr0ReadShadow";
+	case VmcsField::kCr4ReadShadow:	
+		return "Cr4ReadShadow";
+	case VmcsField::kCr3TargetValue0:
+		return "Cr3TargetValue0";
+	case VmcsField::kCr3TargetValue1:	
+		return "Cr3TargetValue1";
+	case VmcsField::kCr3TargetValue2:
+		return "Cr3TargetValue2";
+	case VmcsField::kCr3TargetValue3:
+		return "Cr3TargetValue3"; 
+
+		/* VMCS natural width read only data fields */
+		/* binary 0110_01xx_xxxx_xxx0 */
+	case VmcsField::kExitQualification:
+		return "ExitQualification";
+	case VmcsField::kIoRcx:
+		return "IoRcx";
+	case VmcsField::kIoRsi:
+		return "IoRsi";
+	case VmcsField::kIoRdi:
+		return "IoRdi";
+	case VmcsField::kIoRip:
+		return "IoRip";
+	case VmcsField::kGuestLinearAddress:	
+		return "GuestLinearAddress";
+
+		/* VMCS natural width guest state fields */
+		/* binary 0110_10xx_xxxx_xxx0 */
+	case VmcsField::kGuestCr0:
+		return "GuestCr0";
+	case VmcsField::kGuestCr3:
+		return "GuestCr3";
+	case VmcsField::kGuestCr4:
+		return "GuestCr4";
+	case VmcsField::kGuestEsBase:
+		return "GuestEsBase";
+	case VmcsField::kGuestCsBase:
+		return "GuestCsBase";
+	case VmcsField::kGuestSsBase:
+		return "GuestSsBase";
+	case VmcsField::kGuestDsBase:
+		return "GuestDsBase";
+	case VmcsField::kGuestFsBase:
+		return "GuestFsBase";
+	case VmcsField::kGuestGsBase:
+		return "GuestGsBase";
+	case VmcsField::kGuestLdtrBase:
+		return "GuestLdtrBase";
+	case VmcsField::kGuestTrBase:
+		return "GuestTrBase";
+	case VmcsField::kGuestGdtrBase:
+		return "GuestGdtrBase";
+	case VmcsField::kGuestIdtrBase:
+		return "GuestIdtrBase";
+	case VmcsField::kGuestDr7:
+		return "GuestDr7";
+	case VmcsField::kGuestRsp:
+		return "GuestRsp";
+	case VmcsField::kGuestRip:
+		return "GuestRip";
+	case VmcsField::kGuestRflags:
+		return "GuestRflags";
+	case VmcsField::kGuestPendingDbgExceptions:
+		return "GuestPendingDbgExceptions";
+	case VmcsField::kGuestSysenterEsp:
+		return "GuestSysenterEsp";
+	case VmcsField::kGuestSysenterEip:
+		return "GuestSysenterEip"; 
+
+		/* VMCS natural width host state fields */
+		/* binary 0110_11xx_xxxx_xxx0 */
+	case VmcsField::kHostCr0:
+		return "GuestSysenterEip";
+	case VmcsField::kHostCr3:
+		return "GuestSysenterEip";
+	case VmcsField::kHostCr4:return "HostCr4";
+	case VmcsField::kHostFsBase:return "HostFsBase";
+	case VmcsField::kHostGsBase:return "HostGsBase";
+	case VmcsField::kHostTrBase:return "HostTrBase";
+	case VmcsField::kHostGdtrBase:return "HostGdtrBase";
+	case VmcsField::kHostIdtrBase:return "HostIdtrBase";
+	case VmcsField::kHostIa32SysenterEsp:return "HostIa32SysenterEsp";
+	case VmcsField::kHostIa32SysenterEip:return "HostIa32SysenterEip";
+	case VmcsField::kHostRsp:return "HostRsp";
+	case VmcsField::kHostRip:return "HostRip";  
+	default:
+		return "NULL";
+	}
+}
 //-------------------------------------------------------------------------------------------------------------------------------------//
 
 VOID BuildGernericVMCSMap()
