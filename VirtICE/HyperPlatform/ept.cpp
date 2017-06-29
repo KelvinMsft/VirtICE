@@ -154,20 +154,27 @@ _Use_decl_annotations_ bool EptIsEptAvailable() {
 }
 
 // Returns an EPT pointer from ept_data
-_Use_decl_annotations_ ULONG64 EptGetEptPointer(EptData *ept_data) {
+_Use_decl_annotations_ ULONG64 EptGetEptPointer(EptData *ept_data) 
+{
+  if (!ept_data) 
+  {
+	  return 0;
+  }
   return ept_data->ept_pointer->all;
 }
 
 _Use_decl_annotations_ EptData* RawEptPointerToStruct(ULONG64 EptPtr)
 {
 	EptData* Eptdt = (EptData*)ExAllocatePoolWithTag(NonPagedPool, sizeof(EptData), 'epdt');
+	EptPointer Ptr = { EptPtr };
+
 	if (!Eptdt)
 	{
 		return nullptr;
 	}
+
 	RtlZeroMemory(Eptdt, sizeof(EptData));
 
-	EptPointer Ptr = { EptPtr };
 	Eptdt->ept_pointer->all = Ptr.all;
 	Eptdt->ept_pml4  = (EptCommonEntry*)UtilVaFromPa(UtilPaFromPfn(Ptr.fields.pml4_address));
 
@@ -179,6 +186,11 @@ _Use_decl_annotations_ EptData *AllocEmptyEptp(
 	_In_	EptData* Ept12) 
 {
 
+	if (!Ept12)
+	{
+		HYPERPLATFORM_COMMON_DBG_BREAK();
+		return NULL;
+	}
 	// Allocate ept_data
 	const auto ept_data = reinterpret_cast<EptData *>(ExAllocatePoolWithTag(
 		NonPagedPool, sizeof(EptData), kHyperPlatformCommonPoolTag));
@@ -488,7 +500,6 @@ EptHandleEptViolationForLevel2(
 		const auto ept_entry = EptGetEptPtEntry(ept_data_01, fault_pa);
 		if (!ept_entry || !ept_entry->all) {
 			// EPT entry miss. It should be device memory.
-			HYPERPLATFORM_PERFORMANCE_MEASURE_THIS_SCOPE();
 
 			if (!IsReleaseBuild()) {
 				NT_VERIFY(EptpIsDeviceMemory(fault_pa));
@@ -498,8 +509,8 @@ EptHandleEptViolationForLevel2(
 			{
 				return STATUS_SUCCESS;
 			}
-			//UtilInveptGlobal();
 
+			//UtilInveptGlobal();
 			return STATUS_UNSUCCESSFUL;
 		}
 	}

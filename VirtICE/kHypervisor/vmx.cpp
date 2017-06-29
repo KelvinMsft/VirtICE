@@ -33,10 +33,15 @@ extern VOID			 LeaveVmxMode(GuestContext* guest_context);
 extern ULONG		 GetvCpuMode(GuestContext* guest_context); 
 void				 SaveGuestCr8(VCPUVMX* vcpu, ULONG_PTR cr8); 
 extern ProcessorData*GetProcessorData(GuestContext* guest_context);
-extern void			 SetEptp02(GuestContext *guest_context, ULONG64 EptPtr);
-extern void			 SetEptp12(GuestContext *guest_context, ULONG64 EptPtr);
-extern EptData*		 GetEptp02(GuestContext* guest_context);
-extern EptData*		 GetEptp12(GuestContext* guest_context);
+
+extern void			 SetEptp02Data(GuestContext *guest_context, ULONG64 pEptData);
+extern void			 SetEptp12Data(GuestContext *guest_context, ULONG64 pEptData);
+extern EptData*		 GetEptp02Data(GuestContext* guest_context);
+extern EptData*		 GetEptp12Data(GuestContext* guest_context);
+ 
+extern ULONG64		 GetEptp02(GuestContext* guest_context);
+extern ULONG64		 GetEptp12(GuestContext* guest_context);
+
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 //// Marco
@@ -111,7 +116,7 @@ void DumpVcpu(GuestContext* guest_context)
 	__vmx_vmptrst(&vmcs_pa);
 
 	HYPERPLATFORM_LOG_DEBUG_SAFE("CurrentVmcs: %I64X vm: %I64x vmcs02: %I64X vmcs01: %I64x vmcs12: %I64x root mode: %I64x \r\n",
-		vmcs_pa, vmx, vmx->vmcs02_pa, vmx->vmcs01_pa, vmx->vmcs12_pa, vmx->inRoot, GetvCpuMode(guest_context));
+		vmcs_pa, vmx, vmx->vmcs02.VmcsPa, vmx->vmcs01.VmcsPa, vmx->vmcs12.VmcsPa, vmx->inRoot, GetvCpuMode(guest_context));
 }
 //----------------------------------------------------------------------------------------------------------------------//
 /*
@@ -140,12 +145,12 @@ NTSTATUS SaveExceptionInformationFromVmcs02(VCPUVMX* vcpu)
 		return STATUS_UNSUCCESSFUL;
 	}
 
-	if (!vcpu->vmcs12_pa)
+	if (!vcpu->vmcs12.VmcsPa)
 	{
 		return STATUS_UNSUCCESSFUL;
 	}
 
-	vmcs12_va = (ULONG_PTR)UtilVaFromPa(vcpu->vmcs12_pa);
+	vmcs12_va = (ULONG_PTR)UtilVaFromPa(vcpu->vmcs12.VmcsPa);
 
 	if (!vmcs12_va)
 	{
@@ -192,12 +197,12 @@ NTSTATUS SaveGuestFieldFromVmcs02(VCPUVMX* vcpu)
 		return STATUS_UNSUCCESSFUL;
 	}
 
-	if (!vcpu->vmcs12_pa)
+	if (!vcpu->vmcs12.VmcsPa)
 	{
 		return STATUS_UNSUCCESSFUL;
 	}
 
-	vmcs12_va = (ULONG_PTR)UtilVaFromPa(vcpu->vmcs12_pa);
+	vmcs12_va = (ULONG_PTR)UtilVaFromPa(vcpu->vmcs12.VmcsPa);
 
 	if (!vmcs12_va)
 	{
@@ -278,14 +283,14 @@ NTSTATUS LoadHostStateForLevel1(
 	ULONG_PTR Vmcs01_pa = 0;
 	ULONG_PTR Vmcs12_va = 0;
 
-	if (!vcpu || !vcpu->vmcs01_pa || !vcpu->vmcs12_pa)
+	if (!vcpu || !vcpu->vmcs01.VmcsPa || !vcpu->vmcs12.VmcsPa)
 	{
 		HYPERPLATFORM_COMMON_DBG_BREAK();
 		return STATUS_UNSUCCESSFUL;
 	}
 
-	Vmcs01_pa = vcpu->vmcs01_pa;
-	Vmcs12_va = (ULONG_PTR)UtilVaFromPa(vcpu->vmcs12_pa);
+	Vmcs01_pa = vcpu->vmcs01.VmcsPa;
+	Vmcs12_va = (ULONG_PTR)UtilVaFromPa(vcpu->vmcs12.VmcsPa);
 
 	if (!Vmcs01_pa || !Vmcs12_va)
 	{
@@ -436,7 +441,7 @@ NTSTATUS VMExitEmulate(VCPUVMX* vCPU , GuestContext* guest_context)
 	}
 
 	// Since VMXON, but VMPTRLD 
-	if (!vCPU->vmcs02_pa || !vCPU->vmcs12_pa || vCPU->vmcs12_pa == ~0x0 || vCPU->vmcs02_pa == ~0x0)
+	if (!vCPU->vmcs02.VmcsPa || !vCPU->vmcs12.VmcsPa || vCPU->vmcs12.VmcsPa == ~0x0 || vCPU->vmcs02.VmcsPa == ~0x0)
 	{
 		//HYPERPLATFORM_LOG_DEBUG_SAFE("cannot find vmcs \r\n");
 		return STATUS_UNSUCCESSFUL; 
@@ -470,6 +475,29 @@ void RestoreGuestCr8(VCPUVMX* vcpu)
 	//HYPERPLATFORM_LOG_DEBUG_SAFE("DEBUG###Restore cr8 : %I64X \r\n ", __readcr8());
 }
  
+//---------------------------------------------------------------------------------------------------------------------//
+void AllocateEpt(GuestContext* guest_context, ULONG64 Eptp12)
+{
+	PVOID Eptr02 = NULL;
+
+	if (!GetEptp12Data(guest_context))
+	{
+		SetEptp12Data(guest_context, (ULONG64)RawEptPointerToStruct(Eptp12));
+	}
+
+	if (!GetEptp02(guest_context))
+	{
+		Eptr02 = AllocEmptyEptp(GetEptp12Data(guest_context));
+
+	}
+	if (Eptr02)
+	{
+		SetEptp02Data(guest_context, (ULONG64)Eptr02);
+	}
+	  
+	UtilVmWrite(VmcsField::kEptPointer, (ULONG64)GetEptp02(guest_context));
+}
+
 //---------------------------------------------------------------------------------------------------------------------//
 VOID VmxonEmulate(GuestContext* guest_context)
 {
@@ -535,9 +563,9 @@ VOID VmxonEmulate(GuestContext* guest_context)
 		nested_vmx->inRoot = RootMode;
 		nested_vmx->blockINITsignal = TRUE;
 		nested_vmx->blockAndDisableA20M = TRUE;
-		nested_vmx->vmcs02_pa = 0xFFFFFFFFFFFFFFFF;
-		nested_vmx->vmcs12_pa = 0xFFFFFFFFFFFFFFFF;
-		__vmx_vmptrst(&nested_vmx->vmcs01_pa);
+		nested_vmx->vmcs02.VmcsPa = 0xFFFFFFFFFFFFFFFF;
+		nested_vmx->vmcs12.VmcsPa = 0xFFFFFFFFFFFFFFFF;
+		__vmx_vmptrst(&nested_vmx->vmcs01.VmcsPa);
 		nested_vmx->vmxon_region = vmxon_region_pa;
 		nested_vmx->InitialCpuNumber = KeGetCurrentProcessorNumberEx(&number);
 
@@ -605,7 +633,7 @@ VOID VmxoffEmulate(
 		ULONG GuestRip = UtilVmRead(VmcsField::kGuestRip);
 		ULONG InstLen  = UtilVmRead(VmcsField::kVmExitInstructionLen);
 		//load back vmcs01
-		__vmx_vmptrld(&vcpu_vmx->vmcs01_pa); 
+		__vmx_vmptrld(&vcpu_vmx->vmcs01.VmcsPa);
 	 
 		UtilVmWrite(VmcsField::kGuestRip, GuestRip + InstLen);
 	
@@ -711,13 +739,16 @@ VOID VmclearEmulate(
 			break;
 		}
 	
-		if (vmcs_region_pa == nested_vmx->vmcs12_pa)
+		if (vmcs_region_pa == nested_vmx->vmcs12.VmcsPa)
 		{
-			nested_vmx->vmcs12_pa = 0xFFFFFFFFFFFFFFFF;
+			nested_vmx->vmcs12.VmcsPa = 0xFFFFFFFFFFFFFFFF;
+			nested_vmx->vmcs12.IsLaunch = FALSE;
 		}
 
-		__vmx_vmclear(&nested_vmx->vmcs02_pa);
-		nested_vmx->vmcs02_pa = 0xFFFFFFFFFFFFFFFF;
+		__vmx_vmclear(&nested_vmx->vmcs02.VmcsPa);
+
+		nested_vmx->vmcs02.VmcsPa = 0xFFFFFFFFFFFFFFFF;
+		nested_vmx->vmcs02.IsLaunch = FALSE;
 
 		HYPERPLATFORM_LOG_DEBUG_SAFE("VMCLEAR: Guest Instruction Pointer %I64X Guest Stack Pointer: %I64X  Guest vmcs region: %I64X stored at %I64x on stack\r\n",
 			InstructionPointer, StackPointer, vmcs_region_pa, guest_address);
@@ -726,7 +757,7 @@ VOID VmclearEmulate(
 			nested_vmx->InitialCpuNumber, procnumber.Group, procnumber.Number);
 
 		HYPERPLATFORM_LOG_DEBUG_SAFE("VMCLEAR: VCPU No.: %i Current VMCS : %I64X VMXON Region : %I64X  ",
-			nested_vmx->InitialCpuNumber, nested_vmx->vmcs02_pa, nested_vmx->vmxon_region);
+			nested_vmx->InitialCpuNumber, nested_vmx->vmcs02.VmcsPa, nested_vmx->vmxon_region);
 
 		VMSucceed(GetFlagReg(guest_context));
 
@@ -829,14 +860,14 @@ VOID VmptrldEmulate(GuestContext* guest_context)
 		RtlZeroMemory(vmcs02_region_va, PAGE_SIZE); 
 
 		vmcs02_region_pa = UtilPaFromVa(vmcs02_region_va); 
-		nested_vmx->vmcs02_pa = vmcs02_region_pa;		    //vmcs02' physical address - DIRECT VMREAD/WRITE
-		nested_vmx->vmcs12_pa = vmcs12_region_pa;		    //vmcs12' physical address - we will control its structure in Vmread/Vmwrite
+		nested_vmx->vmcs02.VmcsPa = vmcs02_region_pa;		    //vmcs02' physical address - DIRECT VMREAD/WRITE
+		nested_vmx->vmcs12.VmcsPa = vmcs12_region_pa;		    //vmcs12' physical address - we will control its structure in Vmread/Vmwrite
 		nested_vmx->kVirtualProcessorId = (USHORT)KeGetCurrentProcessorNumberEx(nullptr) + 1;
 
 		HYPERPLATFORM_LOG_DEBUG_SAFE("[VMPTRLD] Run Successfully \r\n");
 		HYPERPLATFORM_LOG_DEBUG_SAFE("[VMPTRLD] VMCS02 PA: %I64X VA: %I64X  \r\n", vmcs02_region_pa, vmcs02_region_va);
 		HYPERPLATFORM_LOG_DEBUG_SAFE("[VMPTRLD] VMCS12 PA: %I64X \r\n", vmcs12_region_pa);
-		HYPERPLATFORM_LOG_DEBUG_SAFE("[VMPTRLD] VMCS01 PA: %I64X VA: %I64X \r\n", nested_vmx->vmcs01_pa, UtilVaFromPa(nested_vmx->vmcs01_pa));
+		HYPERPLATFORM_LOG_DEBUG_SAFE("[VMPTRLD] VMCS01 PA: %I64X VA: %I64X \r\n", nested_vmx->vmcs01.VmcsPa, UtilVaFromPa(nested_vmx->vmcs01.VmcsPa));
 		HYPERPLATFORM_LOG_DEBUG_SAFE("[VMPTRLD] Current Cpu: %x in Cpu Group : %x  Number: %x \r\n", nested_vmx->InitialCpuNumber, procnumber.Group, procnumber.Number);
 		  
 		VMSucceed(GetFlagReg(guest_context));
@@ -859,7 +890,7 @@ VOID VmreadEmulate(GuestContext* guest_context)
 		ULONG_PTR		  memAddress;
 		PROCESSOR_NUMBER  procnumber = { 0 };
 		VCPUVMX*		  NestedvCPU = GetVcpuVmx(guest_context);
-		ULONG64			  vmcs12_pa = NestedvCPU->vmcs12_pa;
+		ULONG64			  vmcs12_pa = NestedvCPU->vmcs12.VmcsPa;
 		ULONG64			  vmcs12_va = (ULONG64)UtilVaFromPa(vmcs12_pa);
 		
 		if (GetvCpuMode(guest_context) != VmxMode)
@@ -960,7 +991,7 @@ VOID VmwriteEmulate(GuestContext* guest_context)
 		BOOLEAN				RorM;
 		PROCESSOR_NUMBER    procnumber = { 0 };
 		VCPUVMX*			NestedvCPU = GetVcpuVmx(guest_context);
-		ULONG64				vmcs12_pa = (ULONG64)NestedvCPU->vmcs12_pa;
+		ULONG64				vmcs12_pa = (ULONG64)NestedvCPU->vmcs12.VmcsPa;
 		ULONG64				vmcs12_va = (ULONG64)UtilVaFromPa(vmcs12_pa);
 
 		if (GetvCpuMode(guest_context) != VmxMode)
@@ -1100,7 +1131,9 @@ VOID VmlaunchEmulate(GuestContext* guest_context)
 		if (GetVmxMode(GetVcpuVmx(guest_context)) != RootMode)
 		{
 			// Inject ...'
-			HYPERPLATFORM_LOG_DEBUG(" Vmlaunch: Unimplemented third level virualization VMX: %I64x  VMCS12: %I64x \r\n", GetVcpuVmx(guest_context), NestedvCPU->vmcs12_pa);
+			HYPERPLATFORM_LOG_DEBUG(" Vmlaunch: Unimplemented third level virualization VMX: %I64x  VMCS12: %I64x \r\n", 
+				GetVcpuVmx(guest_context), NestedvCPU->vmcs12.VmcsPa);
+
 			VMfailInvalid(GetFlagReg(guest_context));
 			break;
 		}
@@ -1116,10 +1149,14 @@ VOID VmlaunchEmulate(GuestContext* guest_context)
 		}
 		*/
 		//Get vmcs02 / vmcs12
+		PVOID	Eptr02 = NULL;
+		ULONG64 Eptp12 = 0;
+		ULONG32 SecondaryCtrl = 0;
+		VmxSecondaryProcessorBasedControls SecondCtrl;
 
 
-		auto    vmcs02_pa = NestedvCPU->vmcs02_pa;
-		auto	vmcs12_pa = NestedvCPU->vmcs12_pa;
+		auto    vmcs02_pa = NestedvCPU->vmcs02.VmcsPa;
+		auto	vmcs12_pa = NestedvCPU->vmcs12.VmcsPa;
 
 		if (!vmcs02_pa || !vmcs12_pa)
 		{
@@ -1131,6 +1168,7 @@ VOID VmlaunchEmulate(GuestContext* guest_context)
 		auto    vmcs02_va = (ULONG64)UtilVaFromPa(vmcs02_pa);
 		auto    vmcs12_va = (ULONG64)UtilVaFromPa(vmcs12_pa);
 
+		RtlFillMemory((PVOID)vmcs02_va, 0, PAGE_SIZE);
 
 		///1. Check Setting of VMX Controls and Host State area;
 		///2. Attempt to load guest state and PDPTRs as appropriate
@@ -1140,28 +1178,20 @@ VOID VmlaunchEmulate(GuestContext* guest_context)
 
 		//Guest passed it to us, and read/write it  VMCS 1-2
 		// Write a VMCS revision identifier
-		const Ia32VmxBasicMsr vmx_basic_msr = { UtilReadMsr64(Msr::kIa32VmxBasic) };
-		RtlFillMemory((PVOID)vmcs02_va, 0, PAGE_SIZE);
-		VmControlStructure* ptr = (VmControlStructure*)vmcs02_va;
-		ULONG64 Eptp12 = 0;
-		ptr->revision_identifier = vmx_basic_msr.fields.revision_identifier;
+ 
 
+		VmRead32(VmcsField::kSecondaryVmExecControl, vmcs12_va, &SecondaryCtrl);
+	
+		SecondCtrl = { SecondaryCtrl };
 		/*
 		1. Mix vmcs control field
 		*/
 		PrepareHostAndControlField(vmcs12_va, vmcs02_pa, TRUE);
-
-		ULONG32 SecondaryCtrl = 0;
-		VmRead32(VmcsField::kSecondaryVmExecControl, vmcs12_va, &SecondaryCtrl);
-
-		VmxSecondaryProcessorBasedControls SecondCtrl = { SecondaryCtrl };
-		if (Eptp12 && SecondCtrl.fields.enable_ept)
+		 
+		if (SecondCtrl.fields.enable_ept)
 		{ 
-			VmRead64(VmcsField::kEptPointer, vmcs12_va, &Eptp12);
-			SetEptp12(guest_context, (ULONG64)RawEptPointerToStruct(Eptp12));
-			PVOID Eptr02 = AllocEmptyEptp(RawEptPointerToStruct(Eptp12));
-			SetEptp02(guest_context, (ULONG64)Eptr02);
-			UtilVmWrite(VmcsField::kEptPointer, (ULONG64)GetEptp02(guest_context));
+			VmRead64(VmcsField::kEptPointer, vmcs12_va, &Eptp12); 	 
+			AllocateEpt(guest_context, Eptp12); 
 		}
 
 		/*
@@ -1169,9 +1199,10 @@ VOID VmlaunchEmulate(GuestContext* guest_context)
 		*/
 		PrepareGuestStateField(vmcs12_va);
 		  
-	
 		SaveHostKernelGsBase(GetProcessorData(guest_context));
 
+		NestedvCPU->vmcs02.IsLaunch = TRUE;
+	
 		if (GetGuestIrql(guest_context) < DISPATCH_LEVEL)
 		{
 			KeLowerIrql(GetGuestIrql(guest_context));
@@ -1185,7 +1216,9 @@ VOID VmlaunchEmulate(GuestContext* guest_context)
 		}
 
 		HYPERPLATFORM_LOG_DEBUG_SAFE("Error VMLAUNCH error code :%x , %x ", 0, 0);
+
 		return;
+
 	} while (FALSE);
 
 }
@@ -1217,15 +1250,15 @@ VOID VmresumeEmulate(GuestContext* guest_context)
 		if (GetVmxMode(GetVcpuVmx(guest_context)) != RootMode)
 		{
 			// Inject ...'
-			HYPERPLATFORM_LOG_DEBUG(" Vmresume: Unimplemented third level virualization VMX: %I64x  VMCS12: %I64x \r\n", GetVcpuVmx(guest_context), NestedvCPU->vmcs12_pa);
+			HYPERPLATFORM_LOG_DEBUG(" Vmresume: Unimplemented third level virualization VMX: %I64x  VMCS12: %I64x \r\n", GetVcpuVmx(guest_context), NestedvCPU->vmcs12.VmcsPa);
 			VMfailInvalid(GetFlagReg(guest_context));
 			break;
 		}
 
 		ENTER_GUEST_MODE(NestedvCPU);
 
-		auto      vmcs02_pa = NestedvCPU->vmcs02_pa;
-		auto	  vmcs12_pa = NestedvCPU->vmcs12_pa;
+		auto      vmcs02_pa = NestedvCPU->vmcs02.VmcsPa;
+		auto	  vmcs12_pa = NestedvCPU->vmcs12.VmcsPa;
 
 		if (!vmcs02_pa || !vmcs12_pa)
 		{
@@ -1250,7 +1283,7 @@ VOID VmresumeEmulate(GuestContext* guest_context)
 		//Prepare VMCS01 Host / Control Field
 		PrepareHostAndControlField(vmcs12_va, vmcs02_pa, FALSE);
 
-		UtilVmWrite(VmcsField::kEptPointer, (ULONG64)GetEptp02(guest_context));
+		UtilVmWrite(VmcsField::kEptPointer, GetEptp02(guest_context));
 
 		/*
 		VM Guest state field Start
@@ -1317,7 +1350,7 @@ VOID VmptrstEmulate(GuestContext* guest_context)
 			break;
 		}
 
-		*(PULONG64)vmcs12_region_va = GetVcpuVmx(guest_context)->vmcs12_pa; 
+		*(PULONG64)vmcs12_region_va = GetVcpuVmx(guest_context)->vmcs12.VmcsPa;
 
 		VMSucceed(GetFlagReg(guest_context));
 	} while (FALSE);

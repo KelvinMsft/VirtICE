@@ -398,12 +398,12 @@ extern "C" {
 		}
 
 		VCPUVMX* vcpu_vmx = GetVcpuVmx(guest_context);
-		if (!vcpu_vmx || !vcpu_vmx->vmcs12_pa)
+		if (!vcpu_vmx || !vcpu_vmx->vmcs12.VmcsPa)
 		{
 			return 0;
 		}
 
-		ULONG_PTR vmcs12_va = (ULONG_PTR)UtilVaFromPa(vcpu_vmx->vmcs12_pa);
+		ULONG_PTR vmcs12_va = (ULONG_PTR)UtilVaFromPa(vcpu_vmx->vmcs12.VmcsPa);
 		if (!vmcs12_va)
 		{
 			return  0;
@@ -742,7 +742,7 @@ extern "C" {
 			
 			if (GetVmxMode(vCPU) == GuestMode)	 //L2 - OS
 			{
-				if (vCPU->vmcs02_pa == vmcs_pa)
+				if (vCPU->vmcs02.VmcsPa == vmcs_pa)
 				{
 					if (!NT_SUCCESS(VmmpHandleVmExitForL2(guest_context)))
 					{
@@ -1978,19 +1978,29 @@ extern "C" {
 			}
 		}
 	}
-
 	//----------------------------------------------------------------------------------------------------------------//
-	_Use_decl_annotations_ EptData* GetEptp02(GuestContext* guest_context)
+	_Use_decl_annotations_ EptData* GetEptp02Data(GuestContext* guest_context)
 	{
 		return guest_context->stack->processor_data->ept_data_02;
 	}
 	//----------------------------------------------------------------------------------------------------------------//
-	_Use_decl_annotations_ EptData* GetEptp12(GuestContext* guest_context)
+	_Use_decl_annotations_ EptData* GetEptp12Data(GuestContext* guest_context)
 	{
-		return	guest_context->stack->processor_data->ept_data_12;
+		return guest_context->stack->processor_data->ept_data_12;
+	}
+
+	//----------------------------------------------------------------------------------------------------------------//
+	_Use_decl_annotations_ ULONG64 GetEptp02(GuestContext* guest_context)
+	{
+		return EptGetEptPointer(GetEptp02Data(guest_context));
 	}
 	//----------------------------------------------------------------------------------------------------------------//
-	_Use_decl_annotations_ void SetEptp02(GuestContext *guest_context, ULONG64 EptPtr)
+	_Use_decl_annotations_ ULONG64 GetEptp12(GuestContext* guest_context)
+	{
+		return EptGetEptPointer(GetEptp12Data(guest_context));
+	}
+	//----------------------------------------------------------------------------------------------------------------//
+	_Use_decl_annotations_ void SetEptp02Data(GuestContext *guest_context, ULONG64 EptPtr)
 	{
 		if (!guest_context->stack->processor_data->ept_data_02 && EptPtr)
 		{
@@ -1999,11 +2009,11 @@ extern "C" {
 	}
 
 	//----------------------------------------------------------------------------------------------------------------//
-	_Use_decl_annotations_ void SetEptp12(GuestContext *guest_context, ULONG64 EptPtr)
+	_Use_decl_annotations_ void SetEptp12Data(GuestContext *guest_context, ULONG64 pEptData)
 	{
-		if (!guest_context->stack->processor_data->ept_data_12 && EptPtr)
+		if (!guest_context->stack->processor_data->ept_data_12 && pEptData)
 		{
-			guest_context->stack->processor_data->ept_data_12 = (EptData*)EptPtr;
+			guest_context->stack->processor_data->ept_data_12 = (EptData*)pEptData;
 		}
 	}
 

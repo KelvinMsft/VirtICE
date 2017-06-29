@@ -45,13 +45,17 @@ struct SharedProcessorData {
 	void* io_bitmap_a;              //!< Bitmap to activate IO VM-exit (~ 0x7FFF)
 	void* io_bitmap_b;              //!< Bitmap to activate IO VM-exit (~ 0xffff)
 };
-
+typedef struct _VMCS
+{
+	ULONG_PTR VmcsPa; 
+	BOOLEAN	  IsLaunch;
+}VMCS, *PVMCS;
 typedef struct _VCPU_VMX
 {
 	ULONG64   vmxon_region;
-	ULONG64   vmcs02_pa;				///VMCS02 , actual VMCS L1 will runs on
-	ULONG64   vmcs12_pa;				///VMCS12 , for L1's VMREAD and VMWRITE, as a shadow VMCS
-	ULONG64   vmcs01_pa;				///VMCS01 , Initial VMCS
+	VMCS	  vmcs02;				///VMCS02 , actual VMCS L1 will runs on
+	VMCS	  vmcs12;				///VMCS12 , for L1's VMREAD and VMWRITE, as a shadow VMCS
+	VMCS	  vmcs01;				///VMCS01 , Initial VMCS
 	ULONG     InitialCpuNumber;				///VCPU number
 	BOOLEAN   blockINITsignal;			///NOT USED
 	BOOLEAN   blockAndDisableA20M;		///NOT USED
