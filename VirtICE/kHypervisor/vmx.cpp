@@ -11,6 +11,8 @@
 #include "..\HyperPlatform\log.h"
 #include "..\HyperPlatform\common.h"
 #include "vmx_common.h"
+#include "..\HyperPlatform\ept.h"
+
 extern "C"
 {
 
@@ -30,7 +32,11 @@ extern VOID			 EnterVmxMode(GuestContext* guest_context);
 extern VOID			 LeaveVmxMode(GuestContext* guest_context);
 extern ULONG		 GetvCpuMode(GuestContext* guest_context); 
 void				 SaveGuestCr8(VCPUVMX* vcpu, ULONG_PTR cr8); 
-extern ProcessorData* GetProcessorData(GuestContext* guest_context);
+extern ProcessorData*GetProcessorData(GuestContext* guest_context);
+extern void			 SetEptp02(GuestContext *guest_context, ULONG64 EptPtr);
+extern void			 SetEptp12(GuestContext *guest_context, ULONG64 EptPtr);
+extern EptData*		 GetEptp02(GuestContext* guest_context);
+extern EptData*		 GetEptp12(GuestContext* guest_context);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 //// Marco
@@ -469,7 +475,7 @@ VOID VmxonEmulate(GuestContext* guest_context)
 {
 	do
 	{
-		VCPUVMX*					  nested_vmx    = NULL;
+		VCPUVMX*			  nested_vmx		    = NULL;
 		ULONG64				  InstructionPointer	= 0;	 
 		ULONG64				  StackPointer			= 0;	 
 		ULONG64				  vmxon_region_pa		= 0;	 
@@ -1072,7 +1078,7 @@ VOID VmlaunchEmulate(GuestContext* guest_context)
 	PROCESSOR_NUMBER  procnumber = { 0 };
 	VCPUVMX*		  NestedvCPU = GetVcpuVmx(guest_context);
 	VmxStatus		  status;
-	do { 
+	do {
 		HYPERPLATFORM_COMMON_DBG_BREAK();
 		HYPERPLATFORM_LOG_DEBUG_SAFE("-----start vmlaunch---- \r\n");
 
@@ -1137,15 +1143,26 @@ VOID VmlaunchEmulate(GuestContext* guest_context)
 		const Ia32VmxBasicMsr vmx_basic_msr = { UtilReadMsr64(Msr::kIa32VmxBasic) };
 		RtlFillMemory((PVOID)vmcs02_va, 0, PAGE_SIZE);
 		VmControlStructure* ptr = (VmControlStructure*)vmcs02_va;
+		ULONG64 Eptp12 = 0;
 		ptr->revision_identifier = vmx_basic_msr.fields.revision_identifier;
-
-		ULONG64 vmcs01_rsp = UtilVmRead64(VmcsField::kHostRsp);
-		ULONG64 vmcs01_rip = UtilVmRead64(VmcsField::kHostRip);
 
 		/*
 		1. Mix vmcs control field
 		*/
 		PrepareHostAndControlField(vmcs12_va, vmcs02_pa, TRUE);
+
+		ULONG32 SecondaryCtrl = 0;
+		VmRead32(VmcsField::kSecondaryVmExecControl, vmcs12_va, &SecondaryCtrl);
+
+		VmxSecondaryProcessorBasedControls SecondCtrl = { SecondaryCtrl };
+		if (Eptp12 && SecondCtrl.fields.enable_ept)
+		{ 
+			VmRead64(VmcsField::kEptPointer, vmcs12_va, &Eptp12);
+			SetEptp12(guest_context, (ULONG64)RawEptPointerToStruct(Eptp12));
+			PVOID Eptr02 = AllocEmptyEptp(RawEptPointerToStruct(Eptp12));
+			SetEptp02(guest_context, (ULONG64)Eptr02);
+			UtilVmWrite(VmcsField::kEptPointer, (ULONG64)GetEptp02(guest_context));
+		}
 
 		/*
 		2. Read VMCS12 Guest's field to VMCS02
@@ -1232,6 +1249,8 @@ VOID VmresumeEmulate(GuestContext* guest_context)
 
 		//Prepare VMCS01 Host / Control Field
 		PrepareHostAndControlField(vmcs12_va, vmcs02_pa, FALSE);
+
+		UtilVmWrite(VmcsField::kEptPointer, (ULONG64)GetEptp02(guest_context));
 
 		/*
 		VM Guest state field Start

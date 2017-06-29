@@ -81,6 +81,29 @@ _IRQL_requires_min_(DISPATCH_LEVEL) void EptHandleEptViolation(
 EptCommonEntry* EptGetEptPtEntry(_In_ EptData* ept_data,
                                  _In_ ULONG64 physical_address);
 
+EptCommonEntry* EptpConstructTableForLevel2Guest(
+	_Out_ EptCommonEntry *Ept02,
+	_In_ ULONG table_level,
+	_In_ ULONG64 physical_address,
+	_In_ EptCommonEntry* Ept01,
+	_In_ EptCommonEntry* Ept12);
+
+
+NTSTATUS EptHandleEptViolationForLevel2(
+	_Out_ EptData* ept_data_02,
+	_In_ EptData *ept_data_01, 
+	_In_ EptData* ept_data_12);
+
+
+EptData* RawEptPointerToStruct(
+	_In_ ULONG64 EptPtr
+);
+
+EptData* AllocEmptyEptp(
+	_In_	EptData* Ept12
+);
+
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 // variables

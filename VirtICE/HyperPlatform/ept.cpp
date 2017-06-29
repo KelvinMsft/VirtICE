@@ -12,7 +12,7 @@
 #include "log.h"
 #include "util.h"
 #include "performance.h"
-
+#include <intrin.h>
 extern "C" {
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -157,6 +157,65 @@ _Use_decl_annotations_ bool EptIsEptAvailable() {
 _Use_decl_annotations_ ULONG64 EptGetEptPointer(EptData *ept_data) {
   return ept_data->ept_pointer->all;
 }
+
+_Use_decl_annotations_ EptData* RawEptPointerToStruct(ULONG64 EptPtr)
+{
+	EptData* Eptdt = (EptData*)ExAllocatePoolWithTag(NonPagedPool, sizeof(EptData), 'epdt');
+	if (!Eptdt)
+	{
+		return nullptr;
+	}
+	RtlZeroMemory(Eptdt, sizeof(EptData));
+
+	EptPointer Ptr = { EptPtr };
+	Eptdt->ept_pointer->all = Ptr.all;
+	Eptdt->ept_pml4  = (EptCommonEntry*)UtilVaFromPa(UtilPaFromPfn(Ptr.fields.pml4_address));
+
+	return Eptdt;
+} 
+
+// Builds EPT, allocates pre-allocated enties, initializes and returns EptData
+_Use_decl_annotations_ EptData *AllocEmptyEptp(
+	_In_	EptData* Ept12) 
+{
+
+	// Allocate ept_data
+	const auto ept_data = reinterpret_cast<EptData *>(ExAllocatePoolWithTag(
+		NonPagedPool, sizeof(EptData), kHyperPlatformCommonPoolTag));
+	if (!ept_data) {
+		return nullptr;
+	}
+	RtlZeroMemory(ept_data, sizeof(EptData));
+
+	// Allocate EptPointer
+	const auto ept_pointer = reinterpret_cast<EptPointer *>(ExAllocatePoolWithTag(
+		NonPagedPool, PAGE_SIZE, kHyperPlatformCommonPoolTag));
+	if (!ept_pointer) {
+		ExFreePoolWithTag(ept_data, kHyperPlatformCommonPoolTag);
+		return nullptr;
+	}
+	RtlZeroMemory(ept_pointer, PAGE_SIZE);
+
+	// Allocate EPT_PML4 and initialize EptPointer
+	const auto ept_pml4 =
+		reinterpret_cast<EptCommonEntry *>(ExAllocatePoolWithTag(
+			NonPagedPool, PAGE_SIZE, kHyperPlatformCommonPoolTag));
+	if (!ept_pml4) {
+		ExFreePoolWithTag(ept_pointer, kHyperPlatformCommonPoolTag);
+		ExFreePoolWithTag(ept_data, kHyperPlatformCommonPoolTag);
+		return nullptr;
+	}
+	RtlZeroMemory(ept_pml4, PAGE_SIZE);
+	ept_pointer->all = Ept12->ept_pointer->all;
+	ept_pml4->all = Ept12->ept_pml4->all;
+
+	ept_data->ept_pml4 = ept_pml4;
+	ept_data->ept_pointer = ept_pointer;
+
+	return ept_data;
+}
+
+//---------------------------------------------------------------------------------------//
 
 // Builds EPT, allocates pre-allocated enties, initializes and returns EptData
 _Use_decl_annotations_ EptData *EptInitialization() {
@@ -406,6 +465,50 @@ _Use_decl_annotations_ static ULONG64 EptpAddressToPteIndex(
 }
 
 // Deal with EPT violation VM-exit.
+_Use_decl_annotations_ 
+NTSTATUS 
+EptHandleEptViolationForLevel2(
+	_Out_	EptData* ept_data_02,
+	_In_	EptData* ept_data_01, 
+	_In_	EptData* ept_data_12
+)
+{
+	const EptViolationQualification exit_qualification = {
+		UtilVmRead(VmcsField::kExitQualification) };
+
+	const auto fault_pa = UtilVmRead64(VmcsField::kGuestPhysicalAddress);
+	const auto fault_va = reinterpret_cast<void *>(
+		exit_qualification.fields.valid_guest_linear_address
+		? UtilVmRead(VmcsField::kGuestLinearAddress)
+		: 0);
+
+	if (!exit_qualification.fields.ept_readable &&
+		!exit_qualification.fields.ept_writeable &&
+		!exit_qualification.fields.ept_executable) {
+		const auto ept_entry = EptGetEptPtEntry(ept_data_01, fault_pa);
+		if (!ept_entry || !ept_entry->all) {
+			// EPT entry miss. It should be device memory.
+			HYPERPLATFORM_PERFORMANCE_MEASURE_THIS_SCOPE();
+
+			if (!IsReleaseBuild()) {
+				NT_VERIFY(EptpIsDeviceMemory(fault_pa));
+			}
+
+			if (EptpConstructTableForLevel2Guest(ept_data_02->ept_pml4, 4, fault_pa, ept_data_01->ept_pml4, ept_data_12->ept_pml4))
+			{
+				return STATUS_SUCCESS;
+			}
+			//UtilInveptGlobal();
+
+			return STATUS_UNSUCCESSFUL;
+		}
+	}
+	HYPERPLATFORM_LOG_DEBUG_SAFE("[IGNR] OTH VA = %p, PA = %016llx", fault_va,
+		fault_pa);
+}
+
+
+// Deal with EPT violation VM-exit.
 _Use_decl_annotations_ void EptHandleEptViolation(EptData *ept_data) {
   const EptViolationQualification exit_qualification = {
       UtilVmRead(VmcsField::kExitQualification)};
@@ -428,7 +531,6 @@ _Use_decl_annotations_ void EptHandleEptViolation(EptData *ept_data) {
         NT_VERIFY(EptpIsDeviceMemory(fault_pa));
       }
       EptpConstructTables(ept_data->ept_pml4, 4, fault_pa, ept_data);
-
       UtilInveptGlobal();
       return;
     }
@@ -566,5 +668,100 @@ _Use_decl_annotations_ static void EptpDestructTables(EptCommonEntry *table,
   }
   ExFreePoolWithTag(table, kHyperPlatformCommonPoolTag);
 }
+ 
+
+// Allocate and initialize all EPT entries associated with the physical_address
+_Use_decl_annotations_ EptCommonEntry* EptpConstructTableForLevel2Guest(
+	EptCommonEntry *Ept02, 
+	ULONG table_level,
+	ULONG64 physical_address,
+	EptCommonEntry *Ept01,
+	EptCommonEntry* Ept12) 
+{
+	switch (table_level) 
+	{
+	case 4: {
+		// table == PML4 (512 GB)
+		const auto pxe_index = EptpAddressToPxeIndex(physical_address);
+		const auto ept_pml4_entry = &Ept02[pxe_index];
+		if (!ept_pml4_entry->all) {
+			const auto ept_pdpt = EptpAllocateEptEntry(NULL);
+			if (!ept_pdpt) {
+				return nullptr;
+			}
+			EptpInitTableEntry(ept_pml4_entry, table_level, UtilPaFromVa(ept_pdpt));
+		}
+		return EptpConstructTableForLevel2Guest(
+			reinterpret_cast<EptCommonEntry *>(
+				UtilVaFromPfn(ept_pml4_entry->fields.physial_address)),
+			table_level - 1, physical_address, Ept01, Ept12);
+	}
+	case 3: {
+		// table == PDPT (1 GB)
+		const auto ppe_index = EptpAddressToPpeIndex(physical_address);
+		const auto ept_pdpt_entry = &Ept02[ppe_index];
+		if (!ept_pdpt_entry->all) {
+			const auto ept_pdt = EptpAllocateEptEntry(NULL);
+			if (!ept_pdt) {
+				return nullptr;
+			}
+			EptpInitTableEntry(ept_pdpt_entry, table_level, UtilPaFromVa(ept_pdt));
+		}
+		return EptpConstructTableForLevel2Guest(
+			reinterpret_cast<EptCommonEntry *>(
+				UtilVaFromPfn(ept_pdpt_entry->fields.physial_address)),
+			table_level - 1, physical_address, Ept01, Ept12);
+	}
+	case 2: {
+		// table == PDT (2 MB)
+		const auto pde_index = EptpAddressToPdeIndex(physical_address);
+		const auto ept_pdt_entry = &Ept02[pde_index];
+		if (!ept_pdt_entry->all) {
+			const auto ept_pt = EptpAllocateEptEntry(NULL);
+			if (!ept_pt) {
+				return nullptr;
+			}
+			EptpInitTableEntry(ept_pdt_entry, table_level, UtilPaFromVa(ept_pt));
+		}
+		return EptpConstructTableForLevel2Guest(
+			reinterpret_cast<EptCommonEntry *>(
+				UtilVaFromPfn(ept_pdt_entry->fields.physial_address)),
+			table_level - 1, physical_address, Ept01, Ept12);
+	}
+	case 1: {
+		// table == PT (4 KB)
+		const auto pte_index = EptpAddressToPteIndex(physical_address);
+		const auto ept_pt_entry = &Ept02[pte_index];
+		NT_ASSERT(!ept_pt_entry->all);
+		
+		// find L1 host pa by L2 guest PA by using ept1-2
+		EptCommonEntry* Ept12Entry  = EptpGetEptPtEntry(Ept12, 4, physical_address);
+		
+		//if dun find it means mapping is not built yet
+		if (Ept12Entry->fields.physial_address == 0)
+		{
+			// in case L1 still not map L2 physical address on EPT0-2, 
+			// return false and let L0 inject VMExit to L1
+			return nullptr;
+		}
+
+		//if find the L1 host pa , continues to find L0 Host PA, since L1 Guest PA is actually mapping to L0 host PA
+		EptCommonEntry* Ept01Entry = EptpGetEptPtEntry(Ept01, 4, UtilPaFromPfn(Ept12Entry->fields.physial_address));
+		if (Ept01Entry->fields.physial_address == 0)
+		{
+			// in case L0 still not map L1 physical address on EPT0-1, 
+			// return false and let L0 handle it
+			return nullptr;
+		}
+		//Finally mapping L0 Physical address to the corresponding L2 Physical address EPT0-2
+		EptpInitTableEntry(ept_pt_entry, table_level, UtilPaFromPfn(Ept01Entry->fields.physial_address));
+		return ept_pt_entry;
+	}
+	default:
+		HYPERPLATFORM_COMMON_DBG_BREAK();
+		return nullptr;
+	}
+}
+ 
 
 }  // extern "C"

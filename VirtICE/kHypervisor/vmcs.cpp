@@ -9,6 +9,8 @@
 #include "..\HyperPlatform\common.h"
 #include "..\HyperPlatform\asm.h"
 #include "..\HyperPlatform\log.h"   
+#include "..\HyperPlatform\\ept.h"
+
 
 //-------------------------------------------------------------------------------------------------------------------------------------//
 VOID PrintAllFieldForVmcs12(const char* func, ULONG64 vmcs12)
@@ -39,12 +41,12 @@ extern "C"
 //// Variable
 ////
 unsigned	g_vmcs_map[16][1 + VMX_HIGHEST_VMCS_ENCODING];
-
+ 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////
 //// Marco
 ////
-
+ 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////
 //// Implementation
@@ -1099,7 +1101,8 @@ VOID PrepareHostAndControlField(ULONG_PTR vmcs12_va, ULONG_PTR vmcs02_pa, BOOLEA
 	UtilVmWrite64(VmcsField::kPmlAddress, pml_address);
 	UtilVmWrite64(VmcsField::kApicAccessAddr, guest_apic_access_address);
 	UtilVmWrite64(VmcsField::kVmFuncCtls, vmfunc_ctrls);
-	UtilVmWrite64(VmcsField::kEptPointer, guest_ept_pointer);
+	//guest_ept_pointer;
+ 	//UtilVmWrite64(VmcsField::kEptPointer, guest_ept_pointer);
 	UtilVmWrite64(VmcsField::kEoiExitBitmap0, guest_eoi_exit_bitmap[0]);
 	UtilVmWrite64(VmcsField::kEoiExitBitmap0High, guest_eoi_exit_bitmap[1]);
 	UtilVmWrite64(VmcsField::kEoiExitBitmap1, guest_eoi_exit_bitmap[2]);

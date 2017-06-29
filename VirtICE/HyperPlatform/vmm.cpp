@@ -305,6 +305,9 @@ extern "C" {
 		return guest_context.vm_continue;
 	}
 #pragma warning(pop)
+
+	//----------------------------------------------------------------------------------------------------------------//
+
 	_Use_decl_annotations_ static void VmmpHandleVmExitForL1(GuestContext *guest_context)
 	{
 		const VmExitInformation exit_reason = { static_cast<ULONG32>(UtilVmRead(VmcsField::kVmExitReason)) };
@@ -792,8 +795,7 @@ extern "C" {
 		VmmpAdjustGuestInstructionPointer(guest_context);
 	} 
 	//---------------------------------------------------------------------------------------------------------------------//
-	// Interrupt
-	_Use_decl_annotations_ static void VmmpHandleException(
+ 	_Use_decl_annotations_ static void VmmpHandleException(
 		GuestContext *guest_context) {
 		HYPERPLATFORM_PERFORMANCE_MEASURE_THIS_SCOPE();
 		const VmExitInterruptionInformationField exception = {
@@ -1625,8 +1627,19 @@ extern "C" {
 	_Use_decl_annotations_ static void VmmpHandleEptViolation(
 		GuestContext *guest_context) {
 		HYPERPLATFORM_PERFORMANCE_MEASURE_THIS_SCOPE();
+
 		auto processor_data = guest_context->stack->processor_data;
-		EptHandleEptViolation(processor_data->ept_data);
+		if (guest_context->stack->processor_data->vcpu_vmx->inRoot)
+		{
+			EptHandleEptViolation(processor_data->ept_data);
+		}
+		else
+		{
+			if (!NT_SUCCESS(EptHandleEptViolationForLevel2(processor_data->ept_data_02, processor_data->ept_data, processor_data->ept_data_12)))
+			{
+				VMExitEmulate(guest_context->stack->processor_data->vcpu_vmx, guest_context);
+			}
+		}
 	}
 
 	// EXIT_REASON_EPT_MISCONFIG
@@ -1963,6 +1976,34 @@ extern "C" {
 			if (deliver_error_code) {
 				UtilVmWrite(VmcsField::kVmEntryExceptionErrorCode, error_code);
 			}
+		}
+	}
+
+	//----------------------------------------------------------------------------------------------------------------//
+	_Use_decl_annotations_ EptData* GetEptp02(GuestContext* guest_context)
+	{
+		return guest_context->stack->processor_data->ept_data_02;
+	}
+	//----------------------------------------------------------------------------------------------------------------//
+	_Use_decl_annotations_ EptData* GetEptp12(GuestContext* guest_context)
+	{
+		return	guest_context->stack->processor_data->ept_data_12;
+	}
+	//----------------------------------------------------------------------------------------------------------------//
+	_Use_decl_annotations_ void SetEptp02(GuestContext *guest_context, ULONG64 EptPtr)
+	{
+		if (!guest_context->stack->processor_data->ept_data_02 && EptPtr)
+		{
+			guest_context->stack->processor_data->ept_data_02 = (EptData*)EptPtr;
+		}
+	}
+
+	//----------------------------------------------------------------------------------------------------------------//
+	_Use_decl_annotations_ void SetEptp12(GuestContext *guest_context, ULONG64 EptPtr)
+	{
+		if (!guest_context->stack->processor_data->ept_data_12 && EptPtr)
+		{
+			guest_context->stack->processor_data->ept_data_12 = (EptData*)EptPtr;
 		}
 	}
 

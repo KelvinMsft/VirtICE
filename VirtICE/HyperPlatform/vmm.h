@@ -67,7 +67,9 @@ struct ProcessorData {
 	void* vmm_stack_limit;                    //!< A head of VA for VMM stack
 	struct VmControlStructure* vmxon_region;  //!< VA of a VMXON region
 	struct VmControlStructure* vmcs_region;   //!< VA of a VMCS region
-	struct EptData* ept_data;                 //!< A pointer to EPT related data
+	struct EptData* ept_data;                 //!< A pointer to EPT related data , for 0-1
+	struct EptData* ept_data_12;              //!< A pointer to EPT related data , for 1-2
+	struct EptData* ept_data_02;              //!< A pointer to EPT related data , for 0-2
 	void* xsave_area;                         //!< VA to store state components
 	ULONG64 xsave_inst_mask;                  //!< A mask to save state components
 	UCHAR fxsave_area[512 + 16];              //!< For fxsave (+16 for alignment)
@@ -92,6 +94,7 @@ struct ProcessorData {
 //
 // prototypes
 //
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 // variables
