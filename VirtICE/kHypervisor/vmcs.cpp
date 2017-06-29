@@ -1347,7 +1347,7 @@ VOID PrepareHostAndControlField(ULONG_PTR vmcs12_va, ULONG_PTR vmcs02_pa, BOOLEA
 		if (VmxStatus::kOk != (status = static_cast<VmxStatus>(__vmx_vmclear(&vmcs02_pa))))
 		{
 			VmxInstructionError error = static_cast<VmxInstructionError>(UtilVmRead(VmcsField::kVmInstructionError));
-			HYPERPLATFORM_LOG_DEBUG_SAFE("Error vmclear2 error code :%x , %x ", status, error);
+			HYPERPLATFORM_LOG_DEBUG("!!! Error vmclear error code :%x , %x ", status, error);
 			HYPERPLATFORM_COMMON_DBG_BREAK();
 		}
 	}
@@ -1356,7 +1356,7 @@ VOID PrepareHostAndControlField(ULONG_PTR vmcs12_va, ULONG_PTR vmcs02_pa, BOOLEA
 	if (VmxStatus::kOk != (status = static_cast<VmxStatus>(__vmx_vmptrld(&vmcs02_pa))))
 	{
 		VmxInstructionError error = static_cast<VmxInstructionError>(UtilVmRead(VmcsField::kVmInstructionError));
-		HYPERPLATFORM_LOG_DEBUG_SAFE("Error vmptrld error code :%x , %x", status, error);
+		HYPERPLATFORM_LOG_DEBUG("!!! Error vmptrld error code :%x , %x", status, error);
 		HYPERPLATFORM_COMMON_DBG_BREAK();
 	}
 
@@ -1475,7 +1475,7 @@ VOID PrepareHostAndControlField(ULONG_PTR vmcs12_va, ULONG_PTR vmcs02_pa, BOOLEA
 	UtilVmWrite64(VmcsField::kApicAccessAddr, guest_apic_access_address);
 	UtilVmWrite64(VmcsField::kVmFuncCtls, vmfunc_ctrls);
 	//guest_ept_pointer;
- 	//UtilVmWrite64(VmcsField::kEptPointer, guest_ept_pointer);
+ 	UtilVmWrite64(VmcsField::kEptPointer, guest_ept_pointer);
 	UtilVmWrite64(VmcsField::kEoiExitBitmap0, guest_eoi_exit_bitmap[0]);
 	UtilVmWrite64(VmcsField::kEoiExitBitmap0High, guest_eoi_exit_bitmap[1]);
 	UtilVmWrite64(VmcsField::kEoiExitBitmap1, guest_eoi_exit_bitmap[2]);

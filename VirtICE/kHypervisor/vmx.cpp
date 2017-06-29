@@ -1167,8 +1167,12 @@ VOID VmlaunchEmulate(GuestContext* guest_context)
 
 		auto    vmcs02_va = (ULONG64)UtilVaFromPa(vmcs02_pa);
 		auto    vmcs12_va = (ULONG64)UtilVaFromPa(vmcs12_pa);
+		 
 
+		const Ia32VmxBasicMsr vmx_basic_msr = { UtilReadMsr64(Msr::kIa32VmxBasic) };
 		RtlFillMemory((PVOID)vmcs02_va, 0, PAGE_SIZE);
+		VmControlStructure* ptr = (VmControlStructure*)vmcs02_va;
+		ptr->revision_identifier = vmx_basic_msr.fields.revision_identifier;
 
 		///1. Check Setting of VMX Controls and Host State area;
 		///2. Attempt to load guest state and PDPTRs as appropriate
@@ -1178,11 +1182,10 @@ VOID VmlaunchEmulate(GuestContext* guest_context)
 
 		//Guest passed it to us, and read/write it  VMCS 1-2
 		// Write a VMCS revision identifier
- 
-
-		VmRead32(VmcsField::kSecondaryVmExecControl, vmcs12_va, &SecondaryCtrl);
+ 		VmRead32(VmcsField::kSecondaryVmExecControl, vmcs12_va, &SecondaryCtrl);
 	
 		SecondCtrl = { SecondaryCtrl };
+
 		/*
 		1. Mix vmcs control field
 		*/
@@ -1190,8 +1193,8 @@ VOID VmlaunchEmulate(GuestContext* guest_context)
 		 
 		if (SecondCtrl.fields.enable_ept)
 		{ 
-			VmRead64(VmcsField::kEptPointer, vmcs12_va, &Eptp12); 	 
-			AllocateEpt(guest_context, Eptp12); 
+	//		VmRead64(VmcsField::kEptPointer, vmcs12_va, &Eptp12); 	 
+	//		AllocateEpt(guest_context, Eptp12); 
 		}
 
 		/*
@@ -1202,7 +1205,7 @@ VOID VmlaunchEmulate(GuestContext* guest_context)
 		SaveHostKernelGsBase(GetProcessorData(guest_context));
 
 		NestedvCPU->vmcs02.IsLaunch = TRUE;
-	
+		
 		if (GetGuestIrql(guest_context) < DISPATCH_LEVEL)
 		{
 			KeLowerIrql(GetGuestIrql(guest_context));
@@ -1211,12 +1214,9 @@ VOID VmlaunchEmulate(GuestContext* guest_context)
 		if (VmxStatus::kOk != (status = static_cast<VmxStatus>(__vmx_vmlaunch())))
 		{
 			VmxInstructionError error2 = static_cast<VmxInstructionError>(UtilVmRead(VmcsField::kVmInstructionError));
-			HYPERPLATFORM_LOG_DEBUG_SAFE("Error VMLAUNCH error code :%x , %x ", status, error2);
+			HYPERPLATFORM_LOG_DEBUG("Error VMLAUNCH error code :%x , %x ", status, error2);
 			HYPERPLATFORM_COMMON_DBG_BREAK();
 		}
-
-		HYPERPLATFORM_LOG_DEBUG_SAFE("Error VMLAUNCH error code :%x , %x ", 0, 0);
-
 		return;
 
 	} while (FALSE);
@@ -1283,7 +1283,7 @@ VOID VmresumeEmulate(GuestContext* guest_context)
 		//Prepare VMCS01 Host / Control Field
 		PrepareHostAndControlField(vmcs12_va, vmcs02_pa, FALSE);
 
-		UtilVmWrite(VmcsField::kEptPointer, GetEptp02(guest_context));
+		//UtilVmWrite(VmcsField::kEptPointer, GetEptp02(guest_context));
 
 		/*
 		VM Guest state field Start
