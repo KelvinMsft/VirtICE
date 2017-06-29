@@ -229,47 +229,26 @@ _Use_decl_annotations_ EptData *EptInitialization() {
   }
   RtlZeroMemory(ept_pml4, PAGE_SIZE);
 
-  //?置EPTP(指向PML4的指?)的屬性
- 
-  //內存?型 ?置為回寫
+
   ept_poiner->fields.memory_type = static_cast<ULONG64>(memory_type::kWriteBack);
-  //EPT?表有多少級別
+
   ept_poiner->fields.page_walk_length = kEptPageWalkLevel - 1;
-  //指向PML4的物理地址
+ 
   ept_poiner->fields.pml4_address = UtilPfnFromPa(UtilPaFromVa(ept_pml4));
 
   // Initialize all EPT entries for all physical memory pages
 
-  //描述符布局如下:
-  /*   
-   *  已經初始化了pm_block 內存塊數組:
-   *  總括一下內容:
-      pm_block->number_of_runs		; 內存塊數量
-	  pm_block->number_of_page		; 內存塊的?面總大小
-	  pm_block->run[1]				; 數組包含以下結構 
-					  -> base_page	; 對應內存塊的基址
-					  -> page_count ; 對應內存塊的?面數量
-   */
-  
-  //?取物理內存描述符(自定義的UTIL.h)
+ 
   const auto pm_ranges = UtilGetPhysicalMemoryRanges();
   
- 
-  //其實以下在於遍歷每一塊可用的內存塊中的每一塊 也COPY一份到EPT中
-
-  //遍歷所有物理內存塊
   for (auto run_index = 0ul; run_index < pm_ranges->number_of_runs; ++run_index) 
   {
-	//?取物理內存塊地址
-    const auto run = &pm_ranges->run[run_index];			//物理內存描述符->物理?面描述符(名為PhysicalMemoryRun)
-    const auto base_addr = run->base_page * PAGE_SIZE;  //透?描述符?算?面基址 = ?面?*?面大小
 	
-	//遍歷??物理內存塊佔有的所有?面 
+    const auto run = &pm_ranges->run[run_index];		
+    const auto base_addr = run->base_page * PAGE_SIZE;  
+	
     for (auto page_index = 0ull; page_index < run->page_count; ++page_index) {
-	  //第一?基址 遍歷每一?
       const auto indexed_addr = base_addr + page_index * PAGE_SIZE;
-	  //傳入EPT_PML4的地址, 級別為4, 物理內存塊地址
-	  //以結立EPTP?表
       const auto ept_pt_entry = EptpConstructTables(ept_pml4, 4, indexed_addr, nullptr);
       if (!ept_pt_entry) {
         EptpDestructTables(ept_pml4, 4);
@@ -283,7 +262,6 @@ _Use_decl_annotations_ EptData *EptInitialization() {
   // Initialize an EPT entry for APIC_BASE. It is required to allocated it now
   // for some reasons, or else, system hangs.
 
-  //CPU 的 LAPIC基址
   const Ia32ApicBaseMsr apic_msr = {UtilReadMsr64(Msr::kIa32ApicBase)};
 
   //為??基址最行??映射到EPT?表
@@ -295,12 +273,7 @@ _Use_decl_annotations_ EptData *EptInitialization() {
   }
 
   // Allocate preallocated_entries
-
-  //除以上兩?, ?先分配的表?
-  
-  //?算要分配多少?表?
   const auto preallocated_entries_size = sizeof(EptCommonEntry *) * kVmxpNumberOfPreallocatedEntries;
-  //分配在非分?內存
   const auto preallocated_entries = reinterpret_cast<EptCommonEntry **>(
       ExAllocatePoolWithTag(NonPagedPoolNx, preallocated_entries_size,
                             kHyperPlatformCommonPoolTag));
@@ -313,9 +286,7 @@ _Use_decl_annotations_ EptData *EptInitialization() {
   RtlZeroMemory(preallocated_entries, preallocated_entries_size);
 
   // And fill preallocated_entries with newly created entries
-  // 填充?先分配的表?
   for (auto i = 0ul; i < kVmxpNumberOfPreallocatedEntries; ++i) {
-	//分配512?表?及?取其地址
     const auto ept_entry = EptpAllocateEptEntry(nullptr);
     if (!ept_entry) {
       EptpFreeUnusedPreAllocatedEntries(preallocated_entries, 0);
@@ -324,56 +295,20 @@ _Use_decl_annotations_ EptData *EptInitialization() {
       ExFreePoolWithTag(ept_data, kHyperPlatformCommonPoolTag);
       return nullptr;
     }
-	//加插到數組中
     preallocated_entries[i] = ept_entry;
   }
 
   // Initialization completed
-  // 完成初始化
-  // 指向EPTP(包含一?結構?,保存PML4物理地址,內存屬性等信息)
   ept_data->ept_pointer = ept_poiner;
-  // 指向PML4指??擬地址
   ept_data->ept_pml4 = ept_pml4;
-  // ?先分配的表?數組
   ept_data->preallocated_entries = preallocated_entries;
-  // ??為0, ?有被加插到表中
   ept_data->preallocated_entries_count = 0;
   
-  /* 總結: 
-   * 
-   * EPTP結構如下:
-		union EptPointer {
-		  ULONG64 all;
-		  struct {
-			ULONG64 memory_type : 3;                      ///< [0:2]	回寫?型
-			ULONG64 page_walk_length : 3;                 ///< [3:5]    4-1
-			ULONG64 enable_accessed_and_dirty_flags : 1;  ///< [6]
-			ULONG64 reserved1 : 5;                        ///< [7:11]
-			ULONG64 pml4_address : 36;                    ///< [12:48-1] PML4 物理地址
-			ULONG64 reserved2 : 16;                       ///< [48:63]
-		  } fields;
-		};
-   * EPT初始化後得到EPT_DATA 
-   * EPT_DATA結構:
-		struct EptData {
-		  EptPointer *ept_pointer;  //EPTP結構?(包含PML4物理地址)
-		  EptCommonEntry *ept_pml4;	//PML4?擬地址
-
-		  EptCommonEntry **preallocated_entries;    //?先分配的目??指?數組
-		  volatile long preallocated_entries_count; //已插入的
-		}; 
-   
-    ??EPT?表??分配的表?包括:
-    那些?續的內存塊全部每一?的物理內存基址被分配並插入到EPT中, APIC基址
-	每次分配都會分配級別以下的所有級別?表, 每512?為一?表
-	保存數據到EPT_DATA和EPTP
-   */
   return ept_data;
 }
 
 // Allocate and initialize all EPT entries associated with the physical_address
 
-//建立對應物理地址 的EPT 4級?表, 並初始化對應的索引?, ?用路徑由高級?表向下?用 直到?置了PT中的物理地址(PT?似32位的PFN)
 _Use_decl_annotations_ static EptCommonEntry *EptpConstructTables(
     EptCommonEntry *table, 
 	ULONG table_level, 
@@ -384,21 +319,15 @@ _Use_decl_annotations_ static EptCommonEntry *EptpConstructTables(
     case 4: {
       // table == PML4 (512 GB)
 
-	  // ?取物理地址的Pxe索引
       const auto pxe_index = EptpAddressToPxeIndex(physical_address);
 
-	  // 使用??索引?取EPT中PML4表?
       const auto ept_pml4_entry = &table[pxe_index];
 
-	  // 如果表??有使用?
       if (!ept_pml4_entry->all) {
-		
-		 //分配下一級的?表空? 並返回基址
-        const auto ept_pdpt = EptpAllocateEptEntry(ept_data);
+	        const auto ept_pdpt = EptpAllocateEptEntry(ept_data);
         if (!ept_pdpt) {
           return nullptr;
         }
-		//初始化表? , ?置表?屬性為read , write , execute, 地址為下一級?表(pdpt)物理地址
         EptpInitTableEntry(ept_pml4_entry, table_level, UtilPaFromVa(ept_pdpt));
       }
       return EptpConstructTables(
@@ -407,22 +336,15 @@ _Use_decl_annotations_ static EptCommonEntry *EptpConstructTables(
           table_level - 1, physical_address, ept_data);
     }
     case 3: {
-      // table == PDPT (1 GB)
-	  // ?取物理地址的PPE索引
 	  const auto ppe_index = EptpAddressToPpeIndex(physical_address);
-	  //使用??索引?取EPT中PDPT表?
       const auto ept_pdpt_entry = &table[ppe_index];
-	  //表??有被初始化
       if (!ept_pdpt_entry->all) {
-		 //分配512?pdt表?, 並返回基址
         const auto ept_pdt = EptpAllocateEptEntry(ept_data);
         if (!ept_pdt) {
           return nullptr;
         }
-		//初始化表? , ?置表?屬性為read , write , execute, 地址為下一級?表(pdt)物理地址
         EptpInitTableEntry(ept_pdpt_entry, table_level, UtilPaFromVa(ept_pdt));
       }
-	  //往下一級?發...
       return EptpConstructTables(
           reinterpret_cast<EptCommonEntry *>(
               UtilVaFromPfn(ept_pdpt_entry->fields.physial_address)),
@@ -430,18 +352,14 @@ _Use_decl_annotations_ static EptCommonEntry *EptpConstructTables(
     }
     case 2: {
       // table == PDT (2 MB)
-	  //?取物理地址的PDE索引
       const auto pde_index = EptpAddressToPdeIndex(physical_address);
-	  //根據索引?取表?
       const auto ept_pdt_entry = &table[pde_index];
 
       if (!ept_pdt_entry->all) {
-		  //分配下一級的?表空? 並返回基址
         const auto ept_pt = EptpAllocateEptEntry(ept_data);
         if (!ept_pt) {
           return nullptr;
 		}
-		//初始化表? , ?置表?屬性為read , write , execute, 地址為下一級?表(pdt)物理地址
 		EptpInitTableEntry(ept_pdt_entry, table_level, UtilPaFromVa(ept_pt));
       }
 	
@@ -452,11 +370,9 @@ _Use_decl_annotations_ static EptCommonEntry *EptpConstructTables(
     }
     case 1: {
       // table == PT (4 KB)
-	  //?取物理地址的PT表
       const auto pte_index = EptpAddressToPteIndex(physical_address);
       const auto ept_pt_entry = &table[pte_index];
       NT_ASSERT(!ept_pt_entry->all);
-	  //直接?置為物理地址
       EptpInitTableEntry(ept_pt_entry, table_level, physical_address);
       return ept_pt_entry;
     }
@@ -558,6 +474,7 @@ _Use_decl_annotations_ void EptHandleEptViolation(
           ? reinterpret_cast<void *>(UtilVmRead(VmcsField::kGuestLinearAddress))
           : nullptr;
 
+  HYPERPLATFORM_LOG_DEBUG("[L1 EPT-VIOLATION] --- Fault Pa : %I64x", fault_pa);
   if (!exit_qualification.fields.ept_readable &&
       !exit_qualification.fields.ept_writeable &&
       !exit_qualification.fields.ept_executable ) {
@@ -568,9 +485,11 @@ _Use_decl_annotations_ void EptHandleEptViolation(
       NT_VERIFY(EptpIsDeviceMemory(fault_pa));
     }
 //	DbgPrint("CR3 without EPT : %x  %s\r\n", guest_cr3, ((ULONG)PsGetCurrentProcess()+0x2D8));
-	EptpConstructTables(ept_data->ept_pml4, 4, fault_pa, ept_data);
+	
 
-    UtilInveptAll();
+	HYPERPLATFORM_LOG_DEBUG("[L2 EPT-VIOLATION] --- Fault Pa : %I64x L1 PhyAddr: %I64x ", fault_pa, 
+		EptpConstructTables(ept_data->ept_pml4, 4, fault_pa, ept_data)->fields.physial_address);
+    //UtilInveptAll();
   } 
   else if (exit_qualification.fields.caused_by_translation) {
     // Tell EPT violation when it is caused due to read or write violation.
@@ -592,11 +511,11 @@ _Use_decl_annotations_ void EptHandleEptViolation(
 			ShHandleEptViolation(sh_data, shared_sh_data, ept_data, fault_va);
 		//}
     } else {
-      DbgPrint("[IGNR] OTH VA = %p, PA = %016llx", fault_va,
+      DbgPrint("[L1-IGNR] OTH VA = %p, PA = %016llx", fault_va,
                                    fault_pa);
     }
   } else {
-    DbgPrint("[IGNR] OTH VA = %p, PA = %016llx", fault_va,
+    DbgPrint("[L1-IGNR] OTH VA = %p, PA = %016llx", fault_va,
                                  fault_pa);
   }
 }
