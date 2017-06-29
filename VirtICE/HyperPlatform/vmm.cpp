@@ -1629,15 +1629,30 @@ extern "C" {
 		HYPERPLATFORM_PERFORMANCE_MEASURE_THIS_SCOPE();
 
 		auto processor_data = guest_context->stack->processor_data;
-		if (guest_context->stack->processor_data->vcpu_vmx->inRoot)
+		if (!guest_context->stack->processor_data->vcpu_vmx)
+		{
+			EptHandleEptViolation(processor_data->ept_data);
+		}
+		else if (guest_context->stack->processor_data->vcpu_vmx->inRoot)
 		{
 			EptHandleEptViolation(processor_data->ept_data);
 		}
 		else
 		{
-			if (!NT_SUCCESS(EptHandleEptViolationForLevel2(processor_data->ept_data_02, processor_data->ept_data, processor_data->ept_data_12)))
+			ULONG32 SecondaryCtrl = 0;
+			BOOLEAN IsUsedEpt = 0;
+			PVOID Vmcs12Va = UtilVaFromPa(guest_context->stack->processor_data->vcpu_vmx->vmcs12.VmcsPa);
+			VmRead32(VmcsField::kSecondaryVmExecControl,(ULONG_PTR)Vmcs12Va, &SecondaryCtrl);
+			VmxSecondaryProcessorBasedControls SecondBasedCtrl = { SecondaryCtrl };
+			if (SecondBasedCtrl.fields.enable_ept) 
 			{
-				VMExitEmulate(guest_context->stack->processor_data->vcpu_vmx, guest_context);
+				if (!NT_SUCCESS(EptHandleEptViolationForLevel2(processor_data->ept_data_02, processor_data->ept_data, processor_data->ept_data_12)))
+				{
+					VMExitEmulate(guest_context->stack->processor_data->vcpu_vmx, guest_context);
+				}
+			}
+			else {
+				EptHandleEptViolation(processor_data->ept_data);
 			}
 		}
 	}
