@@ -128,5 +128,9 @@ VOID PrintAllFieldForVmcs12(
 	ULONG64 vmcs12
 );
 
+CHAR* GetVmcsFieldNameByIndex(
+	VmcsField encoding
+);
+
 }
 #pragma once
