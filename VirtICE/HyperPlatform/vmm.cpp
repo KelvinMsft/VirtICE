@@ -641,10 +641,10 @@ extern "C" {
 		switch (exit_reason.fields.reason)
 		{
 		case VmxExitReason::kCpuid:
-			//IsHandled = VmmpHandleCpuidForL2(guest_context);
+			IsHandled = VmmpHandleCpuidForL2(guest_context);
 			break;
 		case VmxExitReason::kExceptionOrNmi:
-			//IsHandled = VmmpHandleExceptionForL2(guest_context);
+			IsHandled = VmmpHandleExceptionForL2(guest_context);
 			break;
 		case VmxExitReason::kTripleFault:
 			break;
