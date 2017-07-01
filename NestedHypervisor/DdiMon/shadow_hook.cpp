@@ -515,7 +515,7 @@ _Use_decl_annotations_ static void ShpEnablePageShadowingForExec(
   // that has an actual breakpoint to the guest.
   ept_pt_entry->fields.physial_address = UtilPfnFromPa(info.pa_base_for_exec);
 
-  UtilInveptAll();
+ // UtilInveptAll();
 }
 
 // Show a shadowed page for read and write
@@ -531,7 +531,7 @@ _Use_decl_annotations_ static void ShpEnablePageShadowingForRW(
   ept_pt_entry->fields.read_access = true;
   ept_pt_entry->fields.physial_address = UtilPfnFromPa(info.pa_base_for_rw);
 
-  UtilInveptAll();
+ // UtilInveptAll();
 }
 
 // Stop showing a shadow page
@@ -543,7 +543,7 @@ _Use_decl_annotations_ static void ShpDisablePageShadowing(
   ept_pt_entry->fields.read_access = true;
   ept_pt_entry->fields.physial_address = UtilPfnFromPa(pa_base);
 
-  UtilInveptAll();
+ // UtilInveptAll();
 }
 
 // Set MTF on the current processor

@@ -521,9 +521,11 @@ extern "C" {
 		PinBaseCtrl.QuadPart = UtilReadMsr64(Msr::kIa32VmxPinbasedCtls);
 		HYPERPLATFORM_LOG_DEBUG("kIa32VmxPinbasedCtls: %I64X  %I64x", UtilReadMsr64(Msr::kIa32VmxPinbasedCtls), PinBaseCtrl.QuadPart);
 
+		const Ia32VmxBasicMsr vmx_basic_msr = { UtilReadMsr64(Msr::kIa32VmxBasic) };
+
 		processor_data->VmxBasicMsr.QuadPart = VmxBasicMsr.all;
 		processor_data->Ia32FeatureMsr.QuadPart = FeatureCtrl.all;
-		processor_data->VmxEptMsr.QuadPart = 0;	//do not support yet.
+		processor_data->VmxEptMsr.QuadPart = vmx_basic_msr.all;	//do not support yet.
 		 
 		ProcBasedCtrl.HighPart = 0;
  		processor_data->Ia32VmxProcBasedCtrls.QuadPart = ProcBasedCtrl.QuadPart;

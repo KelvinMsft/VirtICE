@@ -641,10 +641,10 @@ extern "C" {
 		switch (exit_reason.fields.reason)
 		{
 		case VmxExitReason::kCpuid:
-			IsHandled = VmmpHandleCpuidForL2(guest_context);
+			//IsHandled = VmmpHandleCpuidForL2(guest_context);
 			break;
 		case VmxExitReason::kExceptionOrNmi:
-			IsHandled = VmmpHandleExceptionForL2(guest_context);
+			//IsHandled = VmmpHandleExceptionForL2(guest_context);
 			break;
 		case VmxExitReason::kTripleFault:
 			break;
@@ -1625,7 +1625,8 @@ extern "C" {
 
 	// EXIT_REASON_EPT_VIOLATION
 	_Use_decl_annotations_ static void VmmpHandleEptViolation(
-		GuestContext *guest_context) {
+		GuestContext *guest_context)
+	{
 		HYPERPLATFORM_PERFORMANCE_MEASURE_THIS_SCOPE();
 
 		auto processor_data = guest_context->stack->processor_data;
@@ -1633,8 +1634,9 @@ extern "C" {
 		{
 			EptHandleEptViolation(processor_data->ept_data);
 		}
-		else if (guest_context->stack->processor_data->vcpu_vmx->inRoot)
+		else if (guest_context->stack->processor_data->vcpu_vmx->inRoot == RootMode)
 		{
+			HYPERPLATFORM_LOG_DEBUG("Root Mode Ept Violation \r\n");
 			EptHandleEptViolation(processor_data->ept_data);
 		}
 		else
@@ -1646,12 +1648,15 @@ extern "C" {
 			VmxSecondaryProcessorBasedControls SecondBasedCtrl = { SecondaryCtrl };
 			if (SecondBasedCtrl.fields.enable_ept) 
 			{
+			//	HYPERPLATFORM_LOG_DEBUG("Guest VMM Enabled Ept \r\n");
 				if (!NT_SUCCESS(EptHandleEptViolationForLevel2(processor_data->ept_data_02, processor_data->ept_data, processor_data->ept_data_12)))
 				{
+					HYPERPLATFORM_COMMON_DBG_BREAK();
 					VMExitEmulate(guest_context->stack->processor_data->vcpu_vmx, guest_context);
 				}
 			}
 			else {
+				HYPERPLATFORM_LOG_DEBUG("Guest VMM DIDN'T Enable Ept \r\n");
 				EptHandleEptViolation(processor_data->ept_data);
 			}
 		}
@@ -2017,9 +2022,10 @@ extern "C" {
 	//----------------------------------------------------------------------------------------------------------------//
 	_Use_decl_annotations_ void SetEptp02Data(GuestContext *guest_context, ULONG64 EptPtr)
 	{
-		if (!guest_context->stack->processor_data->ept_data_02 && EptPtr)
+		if (!guest_context->stack->processor_data->ept_data_02 && EptPtr)	
 		{
 			guest_context->stack->processor_data->ept_data_02 = (EptData*)EptPtr;
+			HYPERPLATFORM_LOG_DEBUG("Guest Ept0-2 : %I64x EptPtr: %I64x \r\n ", guest_context->stack->processor_data->ept_data_02, EptPtr);
 		}
 	}
 

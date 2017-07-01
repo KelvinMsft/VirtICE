@@ -466,15 +466,12 @@ _Use_decl_annotations_ void EptHandleEptViolation(
   const EptViolationQualification exit_qualification = {
       UtilVmRead(VmcsField::kExitQualification)};
 
- // const auto guest_cr3 = UtilVmRead64(VmcsField::kGuestCr3);
-
   const auto fault_pa = UtilVmRead64(VmcsField::kGuestPhysicalAddress);
   const auto fault_va =
       exit_qualification.fields.valid_guest_linear_address
           ? reinterpret_cast<void *>(UtilVmRead(VmcsField::kGuestLinearAddress))
           : nullptr;
-
-  HYPERPLATFORM_LOG_DEBUG("[L1 EPT-VIOLATION] --- Fault Pa : %I64x", fault_pa);
+  HYPERPLATFORM_COMMON_DBG_BREAK();
   if (!exit_qualification.fields.ept_readable &&
       !exit_qualification.fields.ept_writeable &&
       !exit_qualification.fields.ept_executable ) {
@@ -484,8 +481,6 @@ _Use_decl_annotations_ void EptHandleEptViolation(
     if (!IsReleaseBuild()) {
       NT_VERIFY(EptpIsDeviceMemory(fault_pa));
     }
-//	DbgPrint("CR3 without EPT : %x  %s\r\n", guest_cr3, ((ULONG)PsGetCurrentProcess()+0x2D8));
-	
 
 	HYPERPLATFORM_LOG_DEBUG("[L2 EPT-VIOLATION] --- Fault Pa : %I64x L1 PhyAddr: %I64x ", fault_pa, 
 		EptpConstructTables(ept_data->ept_pml4, 4, fault_pa, ept_data)->fields.physial_address);
@@ -508,13 +503,15 @@ _Use_decl_annotations_ void EptHandleEptViolation(
 	if (read_failure || write_failure || execute_failure) {
 		//if (!K_HandleEptViolation(sh_data, shared_sh_data, ept_data, fault_va, execute_failure))
 		//{
-			ShHandleEptViolation(sh_data, shared_sh_data, ept_data, fault_va);
+		//	ShHandleEptViolation(sh_data, shared_sh_data, ept_data, fault_va);
+		HYPERPLATFORM_COMMON_DBG_BREAK();
 		//}
     } else {
       DbgPrint("[L1-IGNR] OTH VA = %p, PA = %016llx", fault_va,
                                    fault_pa);
     }
   } else {
+	HYPERPLATFORM_COMMON_DBG_BREAK();
     DbgPrint("[L1-IGNR] OTH VA = %p, PA = %016llx", fault_va,
                                  fault_pa);
   }

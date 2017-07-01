@@ -333,12 +333,12 @@ _Use_decl_annotations_ static void VmpInitializeVm(ULONG_PTR guest_stack_pointer
   }
   RtlZeroMemory(processor_data, sizeof(ProcessorData));
 
-  /*processor_data->ept_data = EptInitialization();
+  processor_data->ept_data = EptInitialization();
   if (!processor_data->ept_data) 
   {
     goto ReturnFalse;
   }
-   */
+   
   /*
   processor_data->sh_data = ShAllocateShadowHookData();
   if (!processor_data->sh_data) {
@@ -435,18 +435,7 @@ ReturnFalse:;
   VmpFreeProcessorData(processor_data);
 }
 
-// See: VMM SETUP & TEAR DOWN 
-/*
-struct ProcessorData {
-	SharedProcessorData* shared_data;         ///< Shared data
-	void* vmm_stack_limit;                    ///< A head of VA for VMM stack
-	struct VmControlStructure* vmxon_region;  ///< VA of a VMXON region
-	struct VmControlStructure* vmcs_region;   ///< VA of a VMCS region
-	struct EptData* ept_data;                 ///< A pointer to EPT related data
-	struct ShadowHookData* sh_data;           ///< Per-processor shadow hook data
-};
-*/
- 
+// See: VMM SETUP & TEAR DOWN  
 _Use_decl_annotations_ static bool VmpEnterVmxMode(ProcessorData *processor_data) {
   // Apply FIXED bits
  
@@ -478,8 +467,7 @@ _Use_decl_annotations_ static bool VmpEnterVmxMode(ProcessorData *processor_data
   return true;
 }
 
-// See: VMM SETUP & TEAR DOWN
-// ³õÊ¼»¯VMCS
+// See: VMM SETUP & TEAR DOWN 
 _Use_decl_annotations_ static bool VmpInitializeVMCS(ProcessorData *processor_data) {
   // Write a VMCS revision identifier
 
@@ -559,6 +547,7 @@ _Use_decl_annotations_ static bool VmpSetupVMCS(
                             vm_procctl_requested.all)};
    
   VmxSecondaryProcessorBasedControls vm_procctl2_requested = {}; 
+  vm_procctl2_requested.fields.enable_ept = true;
   vm_procctl2_requested.fields.enable_rdtscp = true;   
   vm_procctl2_requested.fields.descriptor_table_exiting = true;  
   vm_procctl2_requested.fields.enable_xsaves_xstors = true; 
@@ -618,7 +607,7 @@ _Use_decl_annotations_ static bool VmpSetupVMCS(
   error |= UtilVmWrite64(VmcsField::kIoBitmapA, 0);
   error |= UtilVmWrite64(VmcsField::kIoBitmapB, 0);	
   error |= UtilVmWrite64(VmcsField::kMsrBitmap, UtilPaFromVa(processor_data->shared_data->msr_bitmap)); 
- // error |= UtilVmWrite64(VmcsField::kEptPointer, EptGetEptPointer(processor_data->ept_data));			 
+  error |= UtilVmWrite64(VmcsField::kEptPointer, EptGetEptPointer(processor_data->ept_data));			 
 																									    
   /* 64-Bit Guest-State Fields */																	    
   error |= UtilVmWrite64(VmcsField::kVmcsLinkPointer, MAXULONG64); 				    

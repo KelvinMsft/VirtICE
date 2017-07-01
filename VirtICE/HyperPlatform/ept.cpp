@@ -164,27 +164,36 @@ _Use_decl_annotations_ ULONG64 EptGetEptPointer(EptData *ept_data)
 }
 
 _Use_decl_annotations_ EptData* RawEptPointerToStruct(ULONG64 EptPtr)
-{
-	EptData* Eptdt = (EptData*)ExAllocatePoolWithTag(NonPagedPool, sizeof(EptData), 'epdt');
-	EptPointer Ptr = { EptPtr };
+{ 	
+	EptPointer	Ptr = { EptPtr }; 
 
-	if (!Eptdt)
+	EptData*	EptDt = (EptData*)ExAllocatePoolWithTag(NonPagedPool, sizeof(EptData), 'epdt');
+	if (!EptDt)
 	{
 		return nullptr;
 	}
+	RtlZeroMemory(EptDt, sizeof(EptData));
 
-	RtlZeroMemory(Eptdt, sizeof(EptData));
+	EptDt->ept_pointer = (EptPointer*)ExAllocatePoolWithTag(NonPagedPool, sizeof(EptPointer), 'epdt');
+	if (!EptDt->ept_pointer)
+	{
+		ExFreePool(EptDt); 
+		EptDt = NULL;
+		return nullptr;
+	} 
+	RtlZeroMemory(EptDt->ept_pointer, sizeof(EptPointer));
 
-	Eptdt->ept_pointer->all = Ptr.all;
-	Eptdt->ept_pml4  = (EptCommonEntry*)UtilVaFromPa(UtilPaFromPfn(Ptr.fields.pml4_address));
-
-	return Eptdt;
+	EptDt->ept_pointer->all = Ptr.all;
+	EptDt->ept_pml4  = (EptCommonEntry*)UtilVaFromPa(UtilPaFromPfn(Ptr.fields.pml4_address));
+	HYPERPLATFORM_LOG_DEBUG("Create Struct Eptptr: %I64x Pml4 : %I64x", EptDt->ept_pointer->fields.pml4_address, EptDt->ept_pml4);
+	return EptDt;
 } 
 
 // Builds EPT, allocates pre-allocated enties, initializes and returns EptData
 _Use_decl_annotations_ EptData *AllocEmptyEptp(
 	_In_	EptData* Ept12) 
 {
+	static const auto kEptPageWalkLevel = 4ul;
 
 	if (!Ept12)
 	{
@@ -217,9 +226,11 @@ _Use_decl_annotations_ EptData *AllocEmptyEptp(
 		ExFreePoolWithTag(ept_data, kHyperPlatformCommonPoolTag);
 		return nullptr;
 	}
-	RtlZeroMemory(ept_pml4, PAGE_SIZE);
-	ept_pointer->all = Ept12->ept_pointer->all;
-	ept_pml4->all = Ept12->ept_pml4->all;
+	RtlZeroMemory(ept_pml4, PAGE_SIZE); 
+	ept_pointer->fields.memory_type =
+		static_cast<ULONG64>(memory_type::kWriteBack);
+	ept_pointer->fields.page_walk_length = kEptPageWalkLevel - 1;
+	ept_pointer->fields.pml4_address = UtilPfnFromPa(UtilPaFromVa(ept_pml4));
 
 	ept_data->ept_pml4 = ept_pml4;
 	ept_data->ept_pointer = ept_pointer;
@@ -496,26 +507,23 @@ EptHandleEptViolationForLevel2(
 
 	if (!exit_qualification.fields.ept_readable &&
 		!exit_qualification.fields.ept_writeable &&
-		!exit_qualification.fields.ept_executable) {
-		const auto ept_entry = EptGetEptPtEntry(ept_data_01, fault_pa);
-		if (!ept_entry || !ept_entry->all) {
-			// EPT entry miss. It should be device memory.
-
-			if (!IsReleaseBuild()) {
-				NT_VERIFY(EptpIsDeviceMemory(fault_pa));
-			}
-
-			if (EptpConstructTableForLevel2Guest(ept_data_02->ept_pml4, 4, fault_pa, ept_data_01->ept_pml4, ept_data_12->ept_pml4))
-			{
-				return STATUS_SUCCESS;
-			}
-
-			//UtilInveptGlobal();
-			return STATUS_UNSUCCESSFUL;
+		!exit_qualification.fields.ept_executable) 
+	{
+		if (EptpConstructTableForLevel2Guest(ept_data_02->ept_pml4, 4, fault_pa, ept_data_01->ept_pml4, ept_data_12->ept_pml4))
+		{
+			HYPERPLATFORM_LOG_DEBUG("[L2-IGNR] EptEntry Built Success \r\n");
+			HYPERPLATFORM_LOG_DEBUG("Repair: Host Level 0 PA: %I64X \r\n ", EptpGetEptPtEntry(ept_data_02->ept_pml4, 4, fault_pa)->fields.physial_address),
+			UtilInveptGlobal();
+			return STATUS_SUCCESS;
 		}
+		HYPERPLATFORM_LOG_DEBUG("[L2-IGNR] EptEntry Built Failure \r\n");
+		return STATUS_UNSUCCESSFUL;
 	}
-	HYPERPLATFORM_LOG_DEBUG_SAFE("[IGNR] OTH VA = %p, PA = %016llx", fault_va,
-		fault_pa);
+	else { 
+		HYPERPLATFORM_LOG_DEBUG_SAFE("[L0-IGNR] OTH VA = %p, PA = %016llx", fault_va,
+			fault_pa);
+	}		  
+	return STATUS_UNSUCCESSFUL;
 }
 
 
@@ -745,27 +753,45 @@ _Use_decl_annotations_ EptCommonEntry* EptpConstructTableForLevel2Guest(
 		const auto ept_pt_entry = &Ept02[pte_index];
 		NT_ASSERT(!ept_pt_entry->all);
 		
-		// find L1 host pa by L2 guest PA by using ept1-2
+		//HYPERPLATFORM_COMMON_DBG_BREAK();
+ 		// find L1 host pa by L2 guest PA by using ept1-2
 		EptCommonEntry* Ept12Entry  = EptpGetEptPtEntry(Ept12, 4, physical_address);
 		
 		//if dun find it means mapping is not built yet
-		if (Ept12Entry->fields.physial_address == 0)
+		if (Ept12Entry == nullptr)
 		{
 			// in case L1 still not map L2 physical address on EPT0-2, 
 			// return false and let L0 inject VMExit to L1
+			HYPERPLATFORM_LOG_DEBUG("Cannot Found EPT12 vA: %I64x Next Level Entry PA: %I64X built mapping : %I64x  \r\n" , Ept12, Ept12->fields.physial_address, physical_address);
 			return nullptr;
+		}
+		else
+		{
+			HYPERPLATFORM_LOG_DEBUG("Found EPT12 VA: %I64X Next Level Entry: %I64x built mapping : %I64x  \r\n", Ept12, Ept12->fields.physial_address, physical_address);
 		}
 
 		//if find the L1 host pa , continues to find L0 Host PA, since L1 Guest PA is actually mapping to L0 host PA
 		EptCommonEntry* Ept01Entry = EptpGetEptPtEntry(Ept01, 4, UtilPaFromPfn(Ept12Entry->fields.physial_address));
-		if (Ept01Entry->fields.physial_address == 0)
+		if (Ept01Entry == nullptr )
 		{
 			// in case L0 still not map L1 physical address on EPT0-1, 
 			// return false and let L0 handle it
+			HYPERPLATFORM_LOG_DEBUG("Cannot Found EPT01 built mapping \r\n");
 			return nullptr;
 		}
+		else
+		{
+			HYPERPLATFORM_LOG_DEBUG("Found EPT02 : %I64X built mapping : %I64x  \r\n", Ept02->fields.physial_address, physical_address);
+		}
+
+	
 		//Finally mapping L0 Physical address to the corresponding L2 Physical address EPT0-2
 		EptpInitTableEntry(ept_pt_entry, table_level, UtilPaFromPfn(Ept01Entry->fields.physial_address));
+
+		HYPERPLATFORM_LOG_DEBUG("L2 Physical address %I64x is mapped to Real Physical Address : %I64X ",
+			physical_address,
+			Ept01Entry->fields.physial_address);
+
 		return ept_pt_entry;
 	}
 	default:

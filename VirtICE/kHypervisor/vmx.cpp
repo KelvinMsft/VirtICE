@@ -173,7 +173,8 @@ NTSTATUS SaveExceptionInformationFromVmcs02(VCPUVMX* vcpu)
 	VmWrite32(VmcsField::kIdtVectoringInfoField, vmcs12_va, UtilVmRead(VmcsField::kIdtVectoringInfoField));
 	VmWrite32(VmcsField::kIdtVectoringErrorCode, vmcs12_va, UtilVmRead(VmcsField::kIdtVectoringErrorCode));
 	VmWrite32(VmcsField::kVmxInstructionInfo, vmcs12_va, UtilVmRead(VmcsField::kVmxInstructionInfo));
-
+	VmWrite64(VmcsField::kGuestPhysicalAddress,vmcs12_va, UtilVmRead64(VmcsField::kGuestPhysicalAddress));
+	VmWrite64(VmcsField::kGuestLinearAddress, vmcs12_va, UtilVmRead64(VmcsField::kGuestLinearAddress));
 }
 //---------------------------------------------------------------------------------------------------------------------//
 
@@ -320,6 +321,8 @@ NTSTATUS LoadHostStateForLevel1(
 	ULONG32   VMCS12_HOST_SYSENTER_CS = 0;
 	ULONG64   VMCS12_HOST_SYSENTER_RIP = 0;
 	ULONG64   VMCS12_HOST_SYSENTER_RSP = 0;
+
+
 
 	if (VmxStatus::kOk != (status = static_cast<VmxStatus>(__vmx_vmptrld(&Vmcs01_pa))))
 	{
@@ -476,25 +479,29 @@ void RestoreGuestCr8(VCPUVMX* vcpu)
 }
  
 //---------------------------------------------------------------------------------------------------------------------//
-void AllocateEpt(GuestContext* guest_context, ULONG64 Eptp12)
+void AllocateEpt02(GuestContext* guest_context, ULONG64 Eptp12)
 {
 	PVOID Eptr02 = NULL;
 
 	if (!GetEptp12Data(guest_context))
 	{
 		SetEptp12Data(guest_context, (ULONG64)RawEptPointerToStruct(Eptp12));
+		HYPERPLATFORM_LOG_DEBUG("Allocated Ept0-2: %I64x \r\n ", GetEptp12Data(guest_context));
 	}
 
 	if (!GetEptp02(guest_context))
 	{
 		Eptr02 = AllocEmptyEptp(GetEptp12Data(guest_context));
-
+		HYPERPLATFORM_LOG_DEBUG("Allocated Ept0-2: %I64x \r\n ", Eptr02 );
 	}
+
 	if (Eptr02)
 	{
 		SetEptp02Data(guest_context, (ULONG64)Eptr02);
+		HYPERPLATFORM_LOG_DEBUG("Set Ept0-2 : %I64x \r\n ", GetEptp02(guest_context));
 	}
-	  
+	
+	HYPERPLATFORM_LOG_DEBUG("Ept0-2 : %I64x \r\n ", GetEptp02(guest_context));
 	UtilVmWrite(VmcsField::kEptPointer, (ULONG64)GetEptp02(guest_context));
 }
 
@@ -1193,8 +1200,10 @@ VOID VmlaunchEmulate(GuestContext* guest_context)
 		 
 		if (SecondCtrl.fields.enable_ept)
 		{ 
-	//		VmRead64(VmcsField::kEptPointer, vmcs12_va, &Eptp12); 	 
-	//		AllocateEpt(guest_context, Eptp12); 
+			VmRead64(VmcsField::kEptPointer, vmcs12_va, &Eptp12); 	 
+			EptPointer pt = { Eptp12 };
+			HYPERPLATFORM_LOG_DEBUG("L1 VMM EptPointer PA: %I64x \r\n", pt.fields.pml4_address);
+			AllocateEpt02(guest_context, Eptp12); 
 		}
 
 		/*
@@ -1227,11 +1236,13 @@ VOID VmresumeEmulate(GuestContext* guest_context)
 {
 	do
 	{
-		VmxStatus			  status;
+		ULONG32 SecondaryCtrl = 0;
+		VmxSecondaryProcessorBasedControls SecondCtrl;
+		ULONG64 Eptp12 = 0;
+		VmxStatus			  status = VmxStatus::kErrorWithoutStatus ;
 		PROCESSOR_NUMBER  procnumber = { 0 };
 		VCPUVMX*		  NestedvCPU	 = GetVcpuVmx(guest_context);
-		//	HYPERPLATFORM_LOG_DEBUG_SAFE("----Start Emulate VMRESUME---");
-
+ 
 		if (GetvCpuMode(guest_context) != VmxMode)
 		{
 			HYPERPLATFORM_LOG_DEBUG_SAFE(("Current vCPU already in VMX mode ! \r\n"));
@@ -1266,14 +1277,18 @@ VOID VmresumeEmulate(GuestContext* guest_context)
 			VMfailInvalid(GetFlagReg(guest_context));
 			break;
 		}
-
+	
 		auto    vmcs02_va = (ULONG64)UtilVaFromPa(vmcs02_pa);
 		auto    vmcs12_va = (ULONG64)UtilVaFromPa(vmcs12_pa);
 
 		// Write a VMCS revision identifier
 		const Ia32VmxBasicMsr vmx_basic_msr = { UtilReadMsr64(Msr::kIa32VmxBasic) };
-
 		VmControlStructure* ptr = (VmControlStructure*)vmcs02_va;
+
+		VmRead32(VmcsField::kSecondaryVmExecControl, vmcs12_va, &SecondaryCtrl);
+		SecondCtrl = { SecondaryCtrl };
+
+
 		ptr->revision_identifier = vmx_basic_msr.fields.revision_identifier;
 
 		//Restore some MSR & cr8 we may need to ensure the consistency  
@@ -1283,7 +1298,11 @@ VOID VmresumeEmulate(GuestContext* guest_context)
 		//Prepare VMCS01 Host / Control Field
 		PrepareHostAndControlField(vmcs12_va, vmcs02_pa, FALSE);
 
-		//UtilVmWrite(VmcsField::kEptPointer, GetEptp02(guest_context));
+		if (SecondCtrl.fields.enable_ept)
+		{ 
+			UtilVmWrite(VmcsField::kEptPointer, GetEptp02(guest_context));
+
+		}
 
 		/*
 		VM Guest state field Start
