@@ -2143,7 +2143,8 @@ extern "C" {
 		}
 
 		/***************changed 2017.6.5 by wwq vmresume don't need invoke VmmpAdjustGuestInstructionPointer***********/
-		if (exit_reason.fields.reason != VmxExitReason::kVmresume)
+		if (exit_reason.fields.reason != VmxExitReason::kVmresume ||
+		    exit_reason.fields.reason != VmxExitReason::kVmoff))
 		{
 			VmmpAdjustGuestInstructionPointer(guest_context);
 		}
