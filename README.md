@@ -5,4 +5,4 @@ VirtICE is a Nested-Virtualization based debugger for debugging Hypervisor / Vir
 Extending the kHypervisor and HyperPlatform work load.
 And currenct change :
 
-2017-07-28    Debug Facility Prototyping
+2017-07-28  -  Debug Facility Prototyping
