@@ -1085,10 +1085,11 @@ CHAR* GetVmcsFieldNameByIndex(VmcsField encoding)
 		/* VMCS natural width host state fields */
 		/* binary 0110_11xx_xxxx_xxx0 */
 	case VmcsField::kHostCr0:
-		return "GuestSysenterEip";
+		return "HostCr0";
 	case VmcsField::kHostCr3:
-		return "GuestSysenterEip";
-	case VmcsField::kHostCr4:return "HostCr4";
+		return "HostCr3";
+	case VmcsField::kHostCr4:
+		return "HostCr4";
 	case VmcsField::kHostFsBase:return "HostFsBase";
 	case VmcsField::kHostGsBase:return "HostGsBase";
 	case VmcsField::kHostTrBase:return "HostTrBase";
@@ -1102,6 +1103,7 @@ CHAR* GetVmcsFieldNameByIndex(VmcsField encoding)
 		return "NULL";
 	}
 }
+
 //-------------------------------------------------------------------------------------------------------------------------------------//
 
 VOID BuildGernericVMCSMap()
@@ -1648,6 +1650,7 @@ VOID PrepareGuestStateField(ULONG_PTR guest_vmcs_va)
 	ULONG64	vmcs12_kGuestRip;
 	ULONG64	vmcs12_kGuestRsp;
 	ULONG64	vmcs12_kGuestRlags;
+	ULONG64 vmcs12_Ia32Efer; 
 
 	VmRead64(VmcsField::kGuestSysenterEsp, guest_vmcs_va, &vmcs12_kGuestSysenterEsp);
 	VmRead64(VmcsField::kGuestSysenterEip, guest_vmcs_va, &vmcs12_kGuestSysenterEip);
@@ -1672,8 +1675,10 @@ VOID PrepareGuestStateField(ULONG_PTR guest_vmcs_va)
 
 	VmRead64(VmcsField::kGuestRip, guest_vmcs_va, &vmcs12_kGuestRip);
 	VmRead64(VmcsField::kGuestRsp, guest_vmcs_va, &vmcs12_kGuestRsp);
-	VmRead64(VmcsField::kGuestRflags, guest_vmcs_va, &vmcs12_kGuestRlags); 
+	VmRead64(VmcsField::kGuestRflags, guest_vmcs_va, &vmcs12_kGuestRlags);  
+	VmRead64(VmcsField::kGuestIa32Efer, guest_vmcs_va, &vmcs12_Ia32Efer);
 
+	UtilVmWrite(VmcsField::kGuestIa32Efer, vmcs12_Ia32Efer);
 	UtilVmWrite(VmcsField::kGuestSysenterEsp, vmcs12_kGuestSysenterEsp);
 	UtilVmWrite(VmcsField::kGuestSysenterEip, vmcs12_kGuestSysenterEip);
 	UtilVmWrite(VmcsField::kGuestPendingDbgExceptions, vmcs12_guest_Pending_dbg_exception);
@@ -1695,7 +1700,7 @@ VOID PrepareGuestStateField(ULONG_PTR guest_vmcs_va)
 	Cr0 cr0 = { vmcs12_kGuestCr0 };
 	cr0.all &= cr0_fixed1.all;
 	cr0.all |= cr0_fixed0.all;
-	UtilVmWrite(VmcsField::kGuestCr0, cr0.all);
+	UtilVmWrite(VmcsField::kGuestCr0, cr0.all); 
 	UtilVmWrite(VmcsField::kCr0ReadShadow, cr0.all);
 
 	const Cr4 cr4_fixed0 = { UtilReadMsr(Msr::kIa32VmxCr4Fixed0) };

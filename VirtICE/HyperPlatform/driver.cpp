@@ -17,6 +17,7 @@
 #include "power_callback.h"
 #include "util.h"
 #include "vm.h"
+#include "VirtICE.h"
 
 #ifndef HYPERPLATFORM_PERFORMANCE_ENABLE_PERFCOUNTER
 #define HYPERPLATFORM_PERFORMANCE_ENABLE_PERFCOUNTER 1
@@ -26,12 +27,7 @@ struct Page1 {
 	Page1();
 	~Page1();
 };
-#define DDI_WIN32_DEVICE_NAME_A		"\\\\.\\DdiMon"
-#define DDI_WIN32_DEVICE_NAME_W		L"\\\\.\\DdiMon"
-#define DDI_DEVICE_NAME_A			"\\Device\\DdiMon"
-#define DDI_DEVICE_NAME_W			L"\\Device\\DdiMon"
-#define DDI_DOS_DEVICE_NAME_A		"\\DosDevices\\DdiMon"
-#define DDI_DOS_DEVICE_NAME_W		L"\\DosDevices\\DdiMon"
+
 typedef struct _DEVICE_EXTENSION
 {
 	ULONG  StateVariable;
@@ -139,7 +135,7 @@ _Use_decl_annotations_ NTSTATUS DriverEntry(PDRIVER_OBJECT driver_object,
     LogTermination();
     return status;
   }
-
+ 
   // Initialize power callback
   status = PowerCallbackInitialization();
   if (!NT_SUCCESS(status)) {
@@ -172,6 +168,8 @@ _Use_decl_annotations_ NTSTATUS DriverEntry(PDRIVER_OBJECT driver_object,
     LogTermination();
     return status;
   }
+
+  IceVmmDbgUnittest();
 
   // Register re-initialization for the log functions if needed
   if (need_reinitialization) {

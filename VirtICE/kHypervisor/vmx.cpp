@@ -12,6 +12,7 @@
 #include "..\HyperPlatform\common.h"
 #include "vmx_common.h"
 #include "..\HyperPlatform\ept.h"
+#include "VirtIce.h"
 
 extern "C"
 {
@@ -31,17 +32,15 @@ extern VOID			 SetvCpuVmx(GuestContext* guest_context, VCPUVMX* VCPUVMX);
 extern VOID			 EnterVmxMode(GuestContext* guest_context);
 extern VOID			 LeaveVmxMode(GuestContext* guest_context);
 extern ULONG		 GetvCpuMode(GuestContext* guest_context); 
-void				 SaveGuestCr8(VCPUVMX* vcpu, ULONG_PTR cr8); 
-extern ProcessorData*GetProcessorData(GuestContext* guest_context);
-
+extern ProcessorData*GetProcessorData(GuestContext* guest_context); 
 extern void			 SetEptp02Data(GuestContext *guest_context, ULONG64 pEptData);
 extern void			 SetEptp12Data(GuestContext *guest_context, ULONG64 pEptData);
 extern EptData*		 GetEptp02Data(GuestContext* guest_context);
-extern EptData*		 GetEptp12Data(GuestContext* guest_context);
- 
+extern EptData*		 GetEptp12Data(GuestContext* guest_context); 
 extern ULONG64		 GetEptp02(GuestContext* guest_context);
 extern ULONG64		 GetEptp12(GuestContext* guest_context);
 
+void				 VmxSaveGuestCr8(VCPUVMX* vcpu, ULONG_PTR cr8);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 //// Marco
@@ -136,7 +135,7 @@ Parameters:
 2. Physical Address for VMCS1-2
 
 */
-NTSTATUS SaveExceptionInformationFromVmcs02(VCPUVMX* vcpu)
+NTSTATUS VmxSaveExceptionInformationFromVmcs02(VCPUVMX* vcpu)
 {
 	ULONG_PTR vmcs12_va = 0;
 	//all nested vm-exit should record 
@@ -156,10 +155,12 @@ NTSTATUS SaveExceptionInformationFromVmcs02(VCPUVMX* vcpu)
 	{
 		return STATUS_UNSUCCESSFUL;
 	}
-	const VmExitInformation exit_reason = {UtilVmRead(VmcsField::kVmExitReason)};
+	const VmExitInformation exit_reason = {
+		UtilVmRead(VmcsField::kVmExitReason)
+	};
 	
 	const VmExitInterruptionInformationField exception = {
-		static_cast<ULONG32>(UtilVmRead(VmcsField::kVmExitIntrInfo))
+		UtilVmRead(VmcsField::kVmExitIntrInfo)
 	};
 
 	ULONG_PTR vmexit_qualification = UtilVmRead(VmcsField::kExitQualification);
@@ -189,12 +190,12 @@ Parameters:
 1.	Physical Address for VMCS1-2
 
 */
-NTSTATUS SaveGuestFieldFromVmcs02(VCPUVMX* vcpu)
+NTSTATUS VmxSaveGuestFieldFromVmcs02(VCPUVMX* vcpu)
 {
 	ULONG_PTR vmcs12_va = 0;
 	//all nested vm-exit should record 
-	if(!vcpu)
-	{ 
+	if (!vcpu)
+	{
 		return STATUS_UNSUCCESSFUL;
 	}
 
@@ -210,6 +211,7 @@ NTSTATUS SaveGuestFieldFromVmcs02(VCPUVMX* vcpu)
 		return STATUS_UNSUCCESSFUL;
 	}
 
+ 
 	VmWrite64(VmcsField::kGuestRip, vmcs12_va, UtilVmRead(VmcsField::kGuestRip));
 	VmWrite64(VmcsField::kGuestRsp, vmcs12_va, UtilVmRead(VmcsField::kGuestRsp));
 	VmWrite64(VmcsField::kGuestCr3, vmcs12_va, UtilVmRead(VmcsField::kGuestCr3));
@@ -277,7 +279,7 @@ NTSTATUS SaveGuestFieldFromVmcs02(VCPUVMX* vcpu)
 }
 
 //---------------------------------------------------------------------------------------------------------------------//
-NTSTATUS LoadHostStateForLevel1(
+NTSTATUS VmxLoadHostStateForLevel1(
 	_In_ VCPUVMX* vcpu
 )
 { 
@@ -436,7 +438,7 @@ NTSTATUS LoadHostStateForLevel1(
 	We desginated the L1 wants to handle any breakpoint exception but the others.
 	So that we only nested it for testing purpose.
 */
-NTSTATUS VMExitEmulate(VCPUVMX* vCPU , GuestContext* guest_context)
+NTSTATUS VmxVMExitEmulate(VCPUVMX* vCPU , GuestContext* guest_context)
 { 
 	if (!vCPU)
 	{
@@ -450,28 +452,83 @@ NTSTATUS VMExitEmulate(VCPUVMX* vCPU , GuestContext* guest_context)
 		return STATUS_UNSUCCESSFUL; 
 	}
 
+	VMDbgCfg* cfg;
+	IceGetVmmDbgConfig(&cfg);
+	
+ 
 	LEAVE_GUEST_MODE(vCPU); 
 	SaveGuestKernelGsBase(GetProcessorData(guest_context)); 
 	LoadHostKernelGsBase(GetProcessorData(guest_context));
 
-	SaveGuestFieldFromVmcs02(vCPU);
-	SaveExceptionInformationFromVmcs02(vCPU);
-	SaveGuestCr8(vCPU, GetGuestCr8(guest_context)); 
-	LoadHostStateForLevel1(vCPU);
+	if (cfg->CallbackBitmap & DBG_VMEXIT_PRE_VMCS_SAVE_GUEST_STATE)
+	{	 
+		const VmExitInformation exit_reason = {
+			static_cast<ULONG32>(UtilVmRead(VmcsField::kVmExitReason)) };
+		VMDbgInfo Info = { 0 };
+		Info.CallbackType = DBG_VMEXIT_PRE_VMCS_SAVE_GUEST_STATE;
+		Info.ExitReason = exit_reason.fields.reason;
+		Info.GuestVmcs = (ULONG_PTR)UtilVaFromPa(vCPU->vmcs12.VmcsPa); 
+		cfg->OnPreVmExitCallback[0](&Info);
+	}
+	
+	VmxSaveGuestFieldFromVmcs02(vCPU);
+	 
+
+	if (cfg->CallbackBitmap & DBG_VMEXIT_POST_VMCS_SAVE_GUEST_STATE)
+	{
+		const VmExitInformation exit_reason = {
+			static_cast<ULONG32>(UtilVmRead(VmcsField::kVmExitReason)) };
+		VMDbgInfo Info = { 0 };
+		Info.CallbackType = DBG_VMEXIT_POST_VMCS_SAVE_GUEST_STATE;
+		Info.ExitReason = exit_reason.fields.reason;
+		Info.GuestVmcs = (ULONG_PTR)UtilVaFromPa(vCPU->vmcs12.VmcsPa);
+		cfg->OnPostVmExitCallback[0](&Info);
+	}
+
+	 
+	VmxSaveExceptionInformationFromVmcs02(vCPU);
+
+	 
+
+	VmxSaveGuestCr8(vCPU, GetGuestCr8(guest_context));
+
+	if (cfg->CallbackBitmap & DBG_VMEXIT_PRE_VMCS_LOAD_HOST_STATE)
+	{
+		const VmExitInformation exit_reason = {
+			static_cast<ULONG32>(UtilVmRead(VmcsField::kVmExitReason)) };
+		VMDbgInfo Info = { 0 };
+		Info.CallbackType = DBG_VMEXIT_PRE_VMCS_LOAD_HOST_STATE;
+		Info.ExitReason = exit_reason.fields.reason;
+		Info.GuestVmcs = (ULONG_PTR)UtilVaFromPa(vCPU->vmcs12.VmcsPa);
+		cfg->OnPreVmExitCallback[0](&Info);
+	}
+
+	VmxLoadHostStateForLevel1(vCPU);
+
+	if (cfg->CallbackBitmap & DBG_VMEXIT_POST_VMCS_LOAD_HOST_STATE)
+	{
+		const VmExitInformation exit_reason = {
+			static_cast<ULONG32>(UtilVmRead(VmcsField::kVmExitReason)) };
+		VMDbgInfo Info = { 0 };
+		Info.CallbackType = DBG_VMEXIT_POST_VMCS_LOAD_HOST_STATE;
+		Info.ExitReason = exit_reason.fields.reason;
+		Info.GuestVmcs = (ULONG_PTR)UtilVaFromPa(vCPU->vmcs12.VmcsPa);
+		cfg->OnPostVmExitCallback[0](&Info);
+	}
 
 
 	return STATUS_SUCCESS;
 } 
 
 //---------------------------------------------------------------------------------------------------------------------//
-void SaveGuestCr8(VCPUVMX* vcpu, ULONG_PTR cr8)
+void VmxSaveGuestCr8(VCPUVMX* vcpu, ULONG_PTR cr8)
 {
 	vcpu->guest_cr8 = cr8;
 	
 	//HYPERPLATFORM_LOG_DEBUG_SAFE("DEBUG###Save cr8 : %I64X \r\n ", vcpu->guest_cr8);
 }
 //---------------------------------------------------------------------------------------------------------------------//
-void RestoreGuestCr8(VCPUVMX* vcpu)
+void VmxRestoreGuestCr8(VCPUVMX* vcpu)
 {
 	__writecr8(vcpu->guest_cr8);
 	
@@ -479,7 +536,7 @@ void RestoreGuestCr8(VCPUVMX* vcpu)
 }
  
 //---------------------------------------------------------------------------------------------------------------------//
-void AllocateEpt02(GuestContext* guest_context, ULONG64 Eptp12)
+void VmxAllocateEpt02(GuestContext* guest_context, ULONG64 Eptp12)
 {
 	PVOID Eptr02 = NULL;
 
@@ -506,7 +563,7 @@ void AllocateEpt02(GuestContext* guest_context, ULONG64 Eptp12)
 }
 
 //---------------------------------------------------------------------------------------------------------------------//
-VOID VmxonEmulate(GuestContext* guest_context)
+VOID VmxVmxonEmulate(GuestContext* guest_context)
 {
 	do
 	{
@@ -600,7 +657,7 @@ VOID VmxonEmulate(GuestContext* guest_context)
 
 }
 //---------------------------------------------------------------------------------------------------------------//
-VOID VmxoffEmulate(
+VOID VmxVmxoffEmulate(
 	_In_ GuestContext* guest_context
 )
 {
@@ -656,7 +713,7 @@ VOID VmxoffEmulate(
 	} while (0);
 }
 //---------------------------------------------------------------------------------------------------------------------//
-VOID VmclearEmulate(
+VOID VmxVmclearEmulate(
 	_In_ GuestContext* guest_context)
 {
 	do
@@ -772,7 +829,7 @@ VOID VmclearEmulate(
 }
 
 //---------------------------------------------------------------------------------------------------------------------//
-VOID VmptrldEmulate(GuestContext* guest_context)
+VOID VmxVmptrldEmulate(GuestContext* guest_context)
 {
 	do
 	{
@@ -883,7 +940,7 @@ VOID VmptrldEmulate(GuestContext* guest_context)
 }
 
 //---------------------------------------------------------------------------------------------------------------------//
-VOID VmreadEmulate(GuestContext* guest_context)
+VOID VmxVmreadEmulate(GuestContext* guest_context)
 {
 
 	do
@@ -947,18 +1004,18 @@ VOID VmreadEmulate(GuestContext* guest_context)
 			if (operand_size == VMCS_FIELD_WIDTH_16BIT)
 			{
 				VmRead16(field, vmcs12_va, (PUSHORT)reg);
-				HYPERPLATFORM_LOG_DEBUG("VMREAD16: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, *(PUSHORT)reg);
+				HYPERPLATFORM_LOG_DEBUG("VMREAD16: field: %s (%I64X) base: %I64X Offset: %I64X Value: %I64X\r\n", GetVmcsFieldNameByIndex(field), field,  vmcs12_va, offset, *(PUSHORT)reg);
 
 			}
 			if (operand_size == VMCS_FIELD_WIDTH_32BIT)
 			{
 				VmRead32(field, vmcs12_va, (PULONG32)reg);
-				HYPERPLATFORM_LOG_DEBUG("VMREAD32: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, *(PULONG32)reg);
+				HYPERPLATFORM_LOG_DEBUG("VMREAD32: field: %s (%I64X) base: %I64X Offset: %I64X Value: %I64X\r\n", GetVmcsFieldNameByIndex(field), field, vmcs12_va, offset, *(PULONG32)reg);
 			}
 			if (operand_size == VMCS_FIELD_WIDTH_64BIT || operand_size == VMCS_FIELD_WIDTH_NATURAL_WIDTH)
 			{
 				VmRead64(field, vmcs12_va, (PULONG64)reg);
-				HYPERPLATFORM_LOG_DEBUG("VMREAD64: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, *(PULONG64)reg);
+				HYPERPLATFORM_LOG_DEBUG("VMREAD64: field: %s (%I64X) base: %I64X Offset: %I64X Value: %I64X\r\n", GetVmcsFieldNameByIndex(field), field,  vmcs12_va, offset, *(PULONG64)reg);
 			}
 
 		}
@@ -967,17 +1024,17 @@ VOID VmreadEmulate(GuestContext* guest_context)
 			if (operand_size == VMCS_FIELD_WIDTH_16BIT)
 			{
 				VmRead16(field, vmcs12_va, (PUSHORT)memAddress);
-				HYPERPLATFORM_LOG_DEBUG("VMREAD16: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, *(PUSHORT)memAddress);
+				HYPERPLATFORM_LOG_DEBUG("VMREAD16: field: %s (%I64X) base: %I64X Offset: %I64X Value: %I64X\r\n", GetVmcsFieldNameByIndex(field), field,  vmcs12_va, offset, *(PUSHORT)memAddress);
 			}
 			if (operand_size == VMCS_FIELD_WIDTH_32BIT)
 			{
 				VmRead32(field, vmcs12_va, (PULONG32)memAddress);
-				HYPERPLATFORM_LOG_DEBUG("VMREAD32: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, *(PULONG32)memAddress);
+				HYPERPLATFORM_LOG_DEBUG("VMREAD32: field: %s (%I64X) base: %I64X Offset: %I64X Value: %I64X\r\n", GetVmcsFieldNameByIndex(field), field,  vmcs12_va, offset, *(PULONG32)memAddress);
 			}
 			if (operand_size == VMCS_FIELD_WIDTH_64BIT || operand_size == VMCS_FIELD_WIDTH_NATURAL_WIDTH)
 			{
 				VmRead64(field, vmcs12_va, (PULONG64)memAddress);
-				HYPERPLATFORM_LOG_DEBUG("VMREAD64: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, *(PULONG64)memAddress);
+				HYPERPLATFORM_LOG_DEBUG("VMREAD64: field: %s (%I64X) base: %I64X Offset: %I64X Value: %I64X\r\n", GetVmcsFieldNameByIndex(field), field,  vmcs12_va, offset, *(PULONG64)memAddress);
 			}
 		}
 
@@ -987,7 +1044,7 @@ VOID VmreadEmulate(GuestContext* guest_context)
 }
 
 //---------------------------------------------------------------------------------------------------------------------//
-VOID VmwriteEmulate(GuestContext* guest_context)
+VOID VmxVmwriteEmulate(GuestContext* guest_context)
 {
 
 	do
@@ -1045,18 +1102,18 @@ VOID VmwriteEmulate(GuestContext* guest_context)
 		if (operand_size == VMCS_FIELD_WIDTH_16BIT)
 		{
 			VmWrite16(field, vmcs12_va, Value);
-			HYPERPLATFORM_LOG_DEBUG("VMWRITE: field: %I64X base: %I64X Offset: %I64X Value: %I64X  \r\n", field, vmcs12_va, offset, (USHORT)Value);
+			HYPERPLATFORM_LOG_DEBUG("VMWRITE: field: %s (%I64X) base: %I64X Offset: %I64X Value: %I64X  \r\n",GetVmcsFieldNameByIndex(field), field,  vmcs12_va, offset, (USHORT)Value);
 		}
 
 		if (operand_size == VMCS_FIELD_WIDTH_32BIT)
 		{
 			VmWrite32(field, vmcs12_va, Value);
-			HYPERPLATFORM_LOG_DEBUG("VMWRITE: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, (ULONG32)Value);
+			HYPERPLATFORM_LOG_DEBUG("VMWRITE: field: %s (%I64X) base: %I64X Offset: %I64X Value: %I64X\r\n", GetVmcsFieldNameByIndex(field), field, vmcs12_va,  offset, (ULONG32)Value);
 		}
 		if (operand_size == VMCS_FIELD_WIDTH_64BIT || operand_size == VMCS_FIELD_WIDTH_NATURAL_WIDTH)
 		{
 			VmWrite64(field, vmcs12_va, Value);
-			HYPERPLATFORM_LOG_DEBUG("VMWRITE: field: %I64X base: %I64X Offset: %I64X Value: %I64X\r\n", field, vmcs12_va, offset, (ULONG64)Value);
+			HYPERPLATFORM_LOG_DEBUG("VMWRITE: field: %s (%I64X) base: %I64X Offset: %I64X Value: %I64X\r\n",GetVmcsFieldNameByIndex(field), field,   vmcs12_va,   offset, (ULONG64)Value);
 		}
 		  
 
@@ -1110,7 +1167,7 @@ VMCS02 Structure
 
 
 //---------------------------------------------------------------------------------------------------------------------//
-VOID VmlaunchEmulate(GuestContext* guest_context)
+VOID VmxVmlaunchEmulate(GuestContext* guest_context)
 {
 
 	PROCESSOR_NUMBER  procnumber = { 0 };
@@ -1203,7 +1260,7 @@ VOID VmlaunchEmulate(GuestContext* guest_context)
 			VmRead64(VmcsField::kEptPointer, vmcs12_va, &Eptp12); 	 
 			EptPointer pt = { Eptp12 };
 			HYPERPLATFORM_LOG_DEBUG("L1 VMM EptPointer PA: %I64x \r\n", pt.fields.pml4_address);
-			AllocateEpt02(guest_context, Eptp12); 
+			VmxAllocateEpt02(guest_context, Eptp12);
 		}
 
 		/*
@@ -1232,7 +1289,7 @@ VOID VmlaunchEmulate(GuestContext* guest_context)
 
 }
 //----------------------------------------------------------------------------------------------------------------//
-VOID VmresumeEmulate(GuestContext* guest_context)
+VOID VmxVmresumeEmulate(GuestContext* guest_context)
 {
 	do
 	{
@@ -1242,7 +1299,8 @@ VOID VmresumeEmulate(GuestContext* guest_context)
 		VmxStatus			  status = VmxStatus::kErrorWithoutStatus ;
 		PROCESSOR_NUMBER  procnumber = { 0 };
 		VCPUVMX*		  NestedvCPU	 = GetVcpuVmx(guest_context);
- 
+		VMDbgCfg* cfg =	NULL;
+		IceGetVmmDbgConfig(&cfg);
 		if (GetvCpuMode(guest_context) != VmxMode)
 		{
 			HYPERPLATFORM_LOG_DEBUG_SAFE(("Current vCPU already in VMX mode ! \r\n"));
@@ -1293,17 +1351,49 @@ VOID VmresumeEmulate(GuestContext* guest_context)
 
 		//Restore some MSR & cr8 we may need to ensure the consistency  
 		  
-		RestoreGuestCr8(NestedvCPU);
+		VmxRestoreGuestCr8(NestedvCPU);
+
+		if (cfg && (cfg->CallbackBitmap & DBG_VMENTRY_PRE_VMCS_SAVE_HOST_STATE))
+		{
+			const VmExitInformation exit_reason = {
+				static_cast<ULONG32>(UtilVmRead(VmcsField::kVmExitReason)) };
+			VMDbgInfo Info = { 0 };
+			Info.CallbackType = DBG_VMENTRY_PRE_VMCS_SAVE_HOST_STATE;
+			Info.ExitReason = exit_reason.fields.reason;
+			Info.GuestVmcs = (ULONG_PTR)UtilVaFromPa(GetVcpuVmx(guest_context)->vmcs12.VmcsPa);
+			cfg->OnPreVmEntryCallback[0](&Info);
+		}
 
 		//Prepare VMCS01 Host / Control Field
 		PrepareHostAndControlField(vmcs12_va, vmcs02_pa, FALSE);
 
 		if (SecondCtrl.fields.enable_ept)
 		{ 
-			UtilVmWrite(VmcsField::kEptPointer, GetEptp02(guest_context));
-
+			UtilVmWrite(VmcsField::kEptPointer, GetEptp02(guest_context)); 
 		}
 
+		if (cfg && (cfg->CallbackBitmap & DBG_VMENTRY_POST_VMCS_SAVE_HOST_STATE))
+		{
+			const VmExitInformation exit_reason = {
+				static_cast<ULONG32>(UtilVmRead(VmcsField::kVmExitReason)) };
+			VMDbgInfo Info = { 0 };
+			Info.CallbackType = DBG_VMENTRY_POST_VMCS_SAVE_HOST_STATE;
+			Info.ExitReason = exit_reason.fields.reason;
+			Info.GuestVmcs = (ULONG_PTR)UtilVaFromPa(GetVcpuVmx(guest_context)->vmcs12.VmcsPa);
+			cfg->OnPostVmEntryCallback[0](&Info);
+		}
+		
+		
+		if (cfg->CallbackBitmap & DBG_VMENTRY_PRE_VMCS_LOAD_GUEST_STATE)
+		{
+			const VmExitInformation exit_reason = {
+				static_cast<ULONG32>(UtilVmRead(VmcsField::kVmExitReason)) };
+			VMDbgInfo Info = { 0 };
+			Info.CallbackType = DBG_VMENTRY_PRE_VMCS_LOAD_GUEST_STATE;
+			Info.ExitReason = exit_reason.fields.reason;
+			Info.GuestVmcs = (ULONG_PTR)UtilVaFromPa(GetVcpuVmx(guest_context)->vmcs12.VmcsPa);
+			cfg->OnPreVmEntryCallback[0](&Info);
+		}
 		/*
 		VM Guest state field Start
 		*/
@@ -1311,6 +1401,18 @@ VOID VmresumeEmulate(GuestContext* guest_context)
 		/*
 		VM Guest state field End
 		*/ 
+
+		if (cfg->CallbackBitmap & DBG_VMENTRY_POST_VMCS_LOAD_GUEST_STATE)
+		{
+			const VmExitInformation exit_reason = {
+				static_cast<ULONG32>(UtilVmRead(VmcsField::kVmExitReason)) };
+			VMDbgInfo Info = { 0 };
+			Info.CallbackType = DBG_VMENTRY_POST_VMCS_LOAD_GUEST_STATE;
+			Info.ExitReason = exit_reason.fields.reason;
+			Info.GuestVmcs = (ULONG_PTR)UtilVaFromPa(GetVcpuVmx(guest_context)->vmcs12.VmcsPa);
+			cfg->OnPostVmEntryCallback[0](&Info);
+		}
+
 		SaveHostKernelGsBase(GetProcessorData(guest_context)); 
 		LoadGuestKernelGsBase(GetProcessorData(guest_context));
 		 
@@ -1337,7 +1439,7 @@ VOID VmresumeEmulate(GuestContext* guest_context)
 }
 
 //----------------------------------------------------------------------------------------------------------------//
-VOID VmptrstEmulate(GuestContext* guest_context)
+VOID VmxVmptrstEmulate(GuestContext* guest_context)
 {
 	do
 	{

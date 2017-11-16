@@ -12,39 +12,39 @@ extern struct GuestContext;
 extern "C"
 {
 
-VOID VmxonEmulate(
+VOID VmxVmxonEmulate(
 	GuestContext* guest_context
 );
 
-VOID VmxoffEmulate(
+VOID VmxVmxoffEmulate(
 	GuestContext* guest_context
 );
 
-VOID VmclearEmulate(
+VOID VmxVmclearEmulate(
 	GuestContext* guest_context
 );
 
-VOID VmptrldEmulate(
+VOID VmxVmptrldEmulate(
 	GuestContext* guest_context
 );
 
-VOID VmreadEmulate(
+VOID VmxVmreadEmulate(
 	GuestContext* guest_context
 );
 
-VOID VmwriteEmulate(
+VOID VmxVmwriteEmulate(
 	GuestContext* guest_context
 );
 
-VOID VmlaunchEmulate(
+VOID VmxVmlaunchEmulate(
 	GuestContext* guest_context
 );
 
-VOID VmresumeEmulate(
+VOID VmxVmresumeEmulate(
 	GuestContext* guest_context
 );
 
-VOID VmptrstEmulate(
+VOID VmxVmptrstEmulate(
 	GuestContext* guest_context
 );
 
@@ -58,7 +58,7 @@ VMX_MODE GetVmxMode(
 	VCPUVMX* vcpu
 );  
 
-NTSTATUS VMExitEmulate(
+NTSTATUS VmxVMExitEmulate(
 	VCPUVMX* vCPU,
 	GuestContext* guest_context
 );

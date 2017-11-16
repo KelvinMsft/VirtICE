@@ -149,6 +149,7 @@
     <ClCompile Include="..\HyperPlatform\power_callback.cpp" />
     <ClCompile Include="..\HyperPlatform\util.cpp" />
     <ClCompile Include="..\HyperPlatform\\vm.cpp" />
+    <ClCompile Include="VirtIce.cpp" />
     <ClCompile Include="vmcs.cpp" />
     <ClCompile Include="..\HyperPlatform\vmm.cpp" />
     <ClCompile Include="vmx.cpp" />
@@ -171,6 +172,7 @@
     <ClInclude Include="..\HyperPlatform\util_page_constants.h" />
     <ClInclude Include="..\HyperPlatform\vm.h" />
     <ClInclude Include="..\HyperPlatform\vmm.h" />
+    <ClInclude Include="VirtIce.h" />
     <ClInclude Include="vmcs.h" />
     <ClInclude Include="vmx.h" />
     <ClInclude Include="vmx_common.h" />

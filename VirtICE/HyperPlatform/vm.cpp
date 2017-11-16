@@ -351,11 +351,15 @@ extern "C" {
 		RTL_BITMAP bitmap_a_header = {};
 		RtlInitializeBitMap(&bitmap_a_header, reinterpret_cast<PULONG>(io_bitmap_a),
 			PAGE_SIZE * CHAR_BIT);
+		RtlSetBits(&bitmap_a_header, 0x60, 1);
+		RtlSetBits(&bitmap_a_header, 0x64, 1);
 		// RtlSetBits(&bitmap_a_header, 0x10, 0x2000);
 
 		RTL_BITMAP bitmap_b_header = {};
 		RtlInitializeBitMap(&bitmap_b_header, reinterpret_cast<PULONG>(io_bitmap_b),
 			PAGE_SIZE * CHAR_BIT);
+		RtlSetBits(&bitmap_a_header, 0x60, 1);
+		RtlSetBits(&bitmap_b_header, 0x64, 1);
 		// RtlSetBits(&bitmap_b_header, 0, 0x8000);
 		return io_bitmaps;
 	}
@@ -844,7 +848,7 @@ extern "C" {
 		error |= UtilVmWrite(VmcsField::kGuestRflags, __readeflags());
 		error |= UtilVmWrite(VmcsField::kGuestSysenterEsp, UtilReadMsr(Msr::kIa32SysenterEsp));
 		error |= UtilVmWrite(VmcsField::kGuestSysenterEip, UtilReadMsr(Msr::kIa32SysenterEip));
-
+		error |= UtilVmWrite(VmcsField::kGuestIa32Efer, UtilReadMsr(Msr::kIa32Efer));
 		/* Natural-Width Host-State Fields */
 		error |= UtilVmWrite(VmcsField::kHostCr0, __readcr0());
 		error |= UtilVmWrite(VmcsField::kHostCr3, __readcr3());

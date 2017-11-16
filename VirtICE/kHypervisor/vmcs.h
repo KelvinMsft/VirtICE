@@ -30,7 +30,7 @@ extern "C"
 #define VMCS_FIELD_WIDTH_NATURAL_WIDTH			 0x3
 
 
-#define MY_SUPPORT_VMX							 2
+#define MY_SUPPORT_VMX							2
 	
 ////////////////////////////////////////////////////////////////////////////////
 //
