@@ -324,7 +324,9 @@ NTSTATUS VmxLoadHostStateForLevel1(
 	ULONG64   VMCS12_HOST_SYSENTER_RIP = 0;
 	ULONG64   VMCS12_HOST_SYSENTER_RSP = 0;
 
-
+	ULONG64   VMCS12_HOST_FS_BASE = 0;
+	ULONG64   VMCS12_HOST_GS_BASE = 0;
+	ULONG64   VMCS12_HOST_TR_BASE = 0;
 
 	if (VmxStatus::kOk != (status = static_cast<VmxStatus>(__vmx_vmptrld(&Vmcs01_pa))))
 	{
@@ -348,12 +350,11 @@ NTSTATUS VmxLoadHostStateForLevel1(
 	 
 	VmRead32(VmcsField::kHostIa32SysenterCs, Vmcs12_va, &VMCS12_HOST_SYSENTER_CS);
 	VmRead64(VmcsField::kHostIa32SysenterEip, Vmcs12_va, &VMCS12_HOST_SYSENTER_RSP);
-	VmRead64(VmcsField::kHostIa32SysenterEsp, Vmcs12_va, &VMCS12_HOST_SYSENTER_RIP);
+	VmRead64(VmcsField::kHostIa32SysenterEsp, Vmcs12_va, &VMCS12_HOST_SYSENTER_RIP); 
 
-
-	VmRead64(VmcsField::kHostFsBase, Vmcs12_va, &VMCS12_HOST_FS);
-	VmRead64(VmcsField::kHostGsBase, Vmcs12_va, &VMCS12_HOST_GS);
-	VmRead64(VmcsField::kHostTrBase, Vmcs12_va, &VMCS12_HOST_TR);
+	VmRead64(VmcsField::kHostFsBase, Vmcs12_va, &VMCS12_HOST_FS_BASE);
+	VmRead64(VmcsField::kHostGsBase, Vmcs12_va, &VMCS12_HOST_GS_BASE);
+	VmRead64(VmcsField::kHostTrBase, Vmcs12_va, &VMCS12_HOST_TR_BASE);
 
 	//Disable Interrupt Flags
 	FlagRegister rflags = { VMCS12_HOST_RFLAGs };
@@ -384,9 +385,9 @@ NTSTATUS VmxLoadHostStateForLevel1(
 	UtilVmWrite(VmcsField::kGuestSsBase, 0);
 	UtilVmWrite(VmcsField::kGuestDsBase, 0);
 	UtilVmWrite(VmcsField::kGuestEsBase, 0);
-	UtilVmWrite(VmcsField::kGuestFsBase, VMCS12_HOST_FS);
-	UtilVmWrite(VmcsField::kGuestGsBase, VMCS12_HOST_GS);
-	UtilVmWrite(VmcsField::kGuestTrBase, VMCS12_HOST_TR);
+	UtilVmWrite(VmcsField::kGuestFsBase, VMCS12_HOST_FS_BASE);
+	UtilVmWrite(VmcsField::kGuestGsBase, VMCS12_HOST_GS_BASE);
+	UtilVmWrite(VmcsField::kGuestTrBase, VMCS12_HOST_TR_BASE);
 	  
 	// Sync L1's Host Host segment Limit with L0 Host Host segment Limit
 	UtilVmWrite(VmcsField::kGuestEsLimit, GetSegmentLimit(AsmReadES()));
@@ -406,7 +407,7 @@ NTSTATUS VmxLoadHostStateForLevel1(
 	UtilVmWrite(VmcsField::kGuestFsArBytes,	  VmpGetSegmentAccessRight(AsmReadFS()));
 	UtilVmWrite(VmcsField::kGuestGsArBytes,	  VmpGetSegmentAccessRight(AsmReadGS()));
 	UtilVmWrite(VmcsField::kGuestLdtrArBytes, VmpGetSegmentAccessRight(AsmReadLDTR()));
-	UtilVmWrite(VmcsField::kGuestTrArBytes,	  VmpGetSegmentAccessRight(AsmReadTR())); 
+	UtilVmWrite(VmcsField::kGuestTrArBytes,	  VmpGetSegmentAccessRight(AsmReadTR()) | 0xB); 
 
 	UtilVmWrite(VmcsField::kGuestIa32Debugctl, 0);
 	  
@@ -1412,7 +1413,9 @@ VOID VmxVmresumeEmulate(GuestContext* guest_context)
 			Info.GuestVmcs = (ULONG_PTR)UtilVaFromPa(GetVcpuVmx(guest_context)->vmcs12.VmcsPa);
 			cfg->OnPostVmEntryCallback[0](&Info);
 		}
-
+	
+		PrintVMCS();   
+		
 		SaveHostKernelGsBase(GetProcessorData(guest_context)); 
 		LoadGuestKernelGsBase(GetProcessorData(guest_context));
 		 
@@ -1430,9 +1433,7 @@ VOID VmxVmresumeEmulate(GuestContext* guest_context)
 
 		//--------------------------------------------------------------------------------------//
 
-		
-//		PrintVMCS();   
-		
+	
 		HYPERPLATFORM_COMMON_DBG_BREAK();
 
 	} while (FALSE);

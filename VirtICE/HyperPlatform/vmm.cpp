@@ -276,12 +276,12 @@ extern "C" {
 
 		guest_context.gp_regs->sp = UtilVmRead(VmcsField::kGuestRsp);
 
-		VmmpSaveExtendedProcessorState(&guest_context);
+		//VmmpSaveExtendedProcessorState(&guest_context);
 
 		// Dispatch the current VM-exit event
 		VmmpHandleVmExit(&guest_context);
 
-		VmmpRestoreExtendedProcessorState(&guest_context);
+		//VmmpRestoreExtendedProcessorState(&guest_context);
 
 		// See: Guidelines for Use of the INVVPID Instruction, and Guidelines for Use
 		// of the INVEPT Instruction
@@ -781,7 +781,7 @@ extern "C" {
 	_Use_decl_annotations_ static void VmmpHandleUnexpectedExit(
 		GuestContext *guest_context) {
 		VmmpDumpGuestSelectors();
-
+		PrintVMCS();
 		HYPERPLATFORM_LOG_DEBUG("%I64X %I64X %I64X", UtilVmRead(VmcsField::kGuestRip), UtilVmRead(VmcsField::kVmExitReason), UtilVmRead(VmcsField::kVmInstructionError));
 
 		HYPERPLATFORM_COMMON_BUG_CHECK(HyperPlatformBugCheck::kUnexpectedVmExit,
