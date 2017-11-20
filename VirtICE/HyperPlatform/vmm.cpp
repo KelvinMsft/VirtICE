@@ -314,6 +314,7 @@ extern "C" {
 
 		switch (exit_reason.fields.reason)
 		{
+		case VmxExitReason::kExternalInterrupt:  
 		case VmxExitReason::kExceptionOrNmi:
 			VmmpHandleException(guest_context);
 			break;
@@ -805,8 +806,11 @@ extern "C" {
 			static_cast<InterruptionType>(exception.fields.interruption_type);
 
 		const auto vector = static_cast<InterruptionVector>(exception.fields.vector);
-
-		if (interruption_type == InterruptionType::kHardwareException) {
+		if (interruption_type == InterruptionType::kExternalInterrupt) {
+			HYPERPLATFORM_LOG_DEBUG("vector: %X", vector);
+			VmmpInjectInterruption(interruption_type, vector, exception.fields.error_code_valid, 0); 
+		}
+		else if (interruption_type == InterruptionType::kHardwareException) {
 			// Hardware exception
 			if (vector == InterruptionVector::kPageFaultException) {
 

@@ -419,7 +419,7 @@ NTSTATUS VmxLoadHostStateForLevel1(
 
 	return STATUS_SUCCESS;
 }
-
+	
 
  
 //-----------------------------------------------------------------------------------------------------------
@@ -471,6 +471,7 @@ NTSTATUS VmxVMExitEmulate(VCPUVMX* vCPU , GuestContext* guest_context)
 		Info.GuestVmcs = (ULONG_PTR)UtilVaFromPa(vCPU->vmcs12.VmcsPa); 
 		cfg->OnPreVmExitCallback[0](&Info);
 	}
+
 	
 	VmxSaveGuestFieldFromVmcs02(vCPU);
 	 
@@ -520,7 +521,87 @@ NTSTATUS VmxVMExitEmulate(VCPUVMX* vCPU , GuestContext* guest_context)
 
 	return STATUS_SUCCESS;
 } 
+//---------------------------------------------------------------------------------------------------------------------//
+NTSTATUS VmxVMEntryEmulate(VCPUVMX* vCPU, GuestContext* guest_context)
+{
+	/*
+	if (!g_vcpus[vcpu_index]->inRoot)
+	{
+	///TODO: Should INJECT vmexit to L1
+	///	   And Handle it well
+	break;
+	}
+	*/
+	//Get vmcs02 / vmcs12    
+	const VmExitInformation exit_reason = { static_cast<ULONG32>(UtilVmRead(VmcsField::kVmExitReason)) };
+	VMDbgInfo Info = { 0 };
+	VMDbgCfg* cfg = NULL;
+	IceGetVmmDbgConfig(&cfg);
 
+	ENTER_GUEST_MODE(vCPU);
+	 
+	auto    vmcs02_pa = vCPU->vmcs02.VmcsPa;
+	auto	vmcs12_pa = vCPU->vmcs12.VmcsPa;
+
+	if (!vmcs02_pa || !vmcs12_pa)
+	{
+		HYPERPLATFORM_LOG_DEBUG_SAFE(("VMLAUNCH: VMCS still not loaded ! \r\n"));
+		VMfailInvalid(GetFlagReg(guest_context));
+		return STATUS_UNSUCCESSFUL;
+	}
+
+	auto    vmcs02_va = (ULONG64)UtilVaFromPa(vmcs02_pa);
+	auto    vmcs12_va = (ULONG64)UtilVaFromPa(vmcs12_pa);
+
+
+	const Ia32VmxBasicMsr vmx_basic_msr = { UtilReadMsr64(Msr::kIa32VmxBasic) };
+	RtlFillMemory((PVOID)vmcs02_va, 0, PAGE_SIZE);
+	VmControlStructure* ptr = (VmControlStructure*)vmcs02_va;
+	ptr->revision_identifier = vmx_basic_msr.fields.revision_identifier;
+
+	Info.ExitReason = exit_reason.fields.reason; 
+	Info.GuestVmcs = (ULONG_PTR)vmcs12_va;
+
+
+	if (cfg && (cfg->CallbackBitmap & DBG_VMENTRY_PRE_VMCS_SAVE_HOST_STATE))
+	{ 
+		Info.CallbackType = DBG_VMENTRY_PRE_VMCS_SAVE_HOST_STATE; 
+		cfg->OnPreVmEntryCallback[0](&Info);
+	}
+
+	/*
+		Prepare VMCS01 Host / Control Field
+	*/
+	PrepareHostAndControlField(vmcs12_va, vmcs02_pa, FALSE); 
+
+
+	if (cfg && (cfg->CallbackBitmap & DBG_VMENTRY_POST_VMCS_SAVE_HOST_STATE))
+	{  
+		Info.CallbackType = DBG_VMENTRY_POST_VMCS_SAVE_HOST_STATE; 
+		cfg->OnPostVmEntryCallback[0](&Info);
+	}
+
+
+	if (cfg->CallbackBitmap & DBG_VMENTRY_PRE_VMCS_LOAD_GUEST_STATE)
+	{  
+		Info.CallbackType = DBG_VMENTRY_PRE_VMCS_LOAD_GUEST_STATE;  
+		cfg->OnPreVmEntryCallback[0](&Info);
+	}
+
+	/*
+		VM Guest state field Start
+	*/
+
+	PrepareGuestStateField(vmcs12_va); 
+
+	if (cfg->CallbackBitmap & DBG_VMENTRY_POST_VMCS_LOAD_GUEST_STATE)
+	{ 
+		Info.CallbackType = DBG_VMENTRY_POST_VMCS_LOAD_GUEST_STATE;  
+		cfg->OnPostVmEntryCallback[0](&Info);
+	}
+	 
+	return STATUS_SUCCESS;
+}
 //---------------------------------------------------------------------------------------------------------------------//
 void VmxSaveGuestCr8(VCPUVMX* vcpu, ULONG_PTR cr8)
 {
@@ -1121,51 +1202,7 @@ VOID VmxVmwriteEmulate(GuestContext* guest_context)
 		VMSucceed(GetFlagReg(guest_context));
 	} while (FALSE);
 }
-
-/*
-64 bit Control field is not used
-
-// below not used
-// kVmExitMsrStoreAddr = 0x00002006,
-// kVmExitMsrStoreAddrHigh = 0x00002007,
-// kVmExitMsrLoadAddr = 0x00002008,
-// kVmExitMsrLoadAddrHigh = 0x00002009,
-// kVmEntryMsrLoadAddr = 0x0000200a,
-// kVmEntryMsrLoadAddrHigh = 0x0000200b,
-// kExecutiveVmcsPointer = 0x0000200c,
-// kExecutiveVmcsPointerHigh = 0x0000200d,
-
-
-// below not used
-kTscOffset = 0x00002010,
-kTscOffsetHigh = 0x00002011,
-kVirtualApicPageAddr = 0x00002012,
-kVirtualApicPageAddrHigh = 0x00002013,
-kApicAccessAddrHigh = 0x00002015,
-kPostedInterruptDescAddr  =  0x00002016,
-kPostedInterruptDescAddrHigh = 0x00002017,
-
-// below not used
-kVmreadBitmapAddress = 0x00002026,
-kVmreadBitmapAddressHigh = 0x00002027,
-kVmwriteBitmapAddress = 0x00002028,
-kVmwriteBitmapAddressHigh = 0x00002029,
-kVirtualizationExceptionInfoAddress = 0x0000202a,
-kVirtualizationExceptionInfoAddressHigh = 0x0000202b,
-kXssExitingBitmap = 0x0000202c,
-kXssExitingBitmapHigh = 0x0000202d,
-*/
-
-/*----------------------------------------------------------------------------------------------------
-
-VMCS02 Structure
---------------------------------------
-16/32/64/Natrual Guest state field :  VMCS12
-16/32/64/Natrual Host  state field :  VMCS01
-16/32/64/Natrual Control field	   :  VMCS01+VMCS12
-
-----------------------------------------------------------------------------------------------------*/
-
+ 
 
 //---------------------------------------------------------------------------------------------------------------------//
 VOID VmxVmlaunchEmulate(GuestContext* guest_context)
@@ -1203,76 +1240,14 @@ VOID VmxVmlaunchEmulate(GuestContext* guest_context)
 			break;
 		}
 
-		ENTER_GUEST_MODE(NestedvCPU);
-
-		/*
-		if (!g_vcpus[vcpu_index]->inRoot)
-		{
-		///TODO: Should INJECT vmexit to L1
-		///	   And Handle it well
-		break;
-		}
-		*/
-		//Get vmcs02 / vmcs12
-		PVOID	Eptr02 = NULL;
-		ULONG64 Eptp12 = 0;
-		ULONG32 SecondaryCtrl = 0;
-		VmxSecondaryProcessorBasedControls SecondCtrl;
-
-
-		auto    vmcs02_pa = NestedvCPU->vmcs02.VmcsPa;
-		auto	vmcs12_pa = NestedvCPU->vmcs12.VmcsPa;
-
-		if (!vmcs02_pa || !vmcs12_pa)
-		{
-			HYPERPLATFORM_LOG_DEBUG_SAFE(("VMLAUNCH: VMCS still not loaded ! \r\n"));
-			VMfailInvalid(GetFlagReg(guest_context));
-			break;
-		}
-
-		auto    vmcs02_va = (ULONG64)UtilVaFromPa(vmcs02_pa);
-		auto    vmcs12_va = (ULONG64)UtilVaFromPa(vmcs12_pa);
-		 
-
-		const Ia32VmxBasicMsr vmx_basic_msr = { UtilReadMsr64(Msr::kIa32VmxBasic) };
-		RtlFillMemory((PVOID)vmcs02_va, 0, PAGE_SIZE);
-		VmControlStructure* ptr = (VmControlStructure*)vmcs02_va;
-		ptr->revision_identifier = vmx_basic_msr.fields.revision_identifier;
-
-		///1. Check Setting of VMX Controls and Host State area;
-		///2. Attempt to load guest state and PDPTRs as appropriate
-		///3. Attempt to load MSRs from VM-Entry MSR load area;
-		///4. Set VMCS to "launched"
-		///5. VM Entry success
-
-		//Guest passed it to us, and read/write it  VMCS 1-2
-		// Write a VMCS revision identifier
- 		VmRead32(VmcsField::kSecondaryVmExecControl, vmcs12_va, &SecondaryCtrl);
-	
-		SecondCtrl = { SecondaryCtrl };
-
-		/*
-		1. Mix vmcs control field
-		*/
-		PrepareHostAndControlField(vmcs12_va, vmcs02_pa, TRUE);
-		 
-		if (SecondCtrl.fields.enable_ept)
-		{ 
-			VmRead64(VmcsField::kEptPointer, vmcs12_va, &Eptp12); 	 
-			EptPointer pt = { Eptp12 };
-			HYPERPLATFORM_LOG_DEBUG("L1 VMM EptPointer PA: %I64x \r\n", pt.fields.pml4_address);
-			VmxAllocateEpt02(guest_context, Eptp12);
-		}
-
-		/*
-		2. Read VMCS12 Guest's field to VMCS02
-		*/
-		PrepareGuestStateField(vmcs12_va);
-		  
 		SaveHostKernelGsBase(GetProcessorData(guest_context));
+  
+		VmxVMEntryEmulate(NestedvCPU, guest_context);
 
 		NestedvCPU->vmcs02.IsLaunch = TRUE;
-		
+		   
+		VmEntryCheck();
+
 		if (GetGuestIrql(guest_context) < DISPATCH_LEVEL)
 		{
 			KeLowerIrql(GetGuestIrql(guest_context));
@@ -1284,6 +1259,7 @@ VOID VmxVmlaunchEmulate(GuestContext* guest_context)
 			HYPERPLATFORM_LOG_DEBUG("Error VMLAUNCH error code :%x , %x ", status, error2);
 			HYPERPLATFORM_COMMON_DBG_BREAK();
 		}
+
 		return;
 
 	} while (FALSE);
@@ -1294,14 +1270,14 @@ VOID VmxVmresumeEmulate(GuestContext* guest_context)
 {
 	do
 	{
+		HYPERPLATFORM_COMMON_DBG_BREAK();
 		ULONG32 SecondaryCtrl = 0;
 		VmxSecondaryProcessorBasedControls SecondCtrl;
 		ULONG64 Eptp12 = 0;
 		VmxStatus			  status = VmxStatus::kErrorWithoutStatus ;
 		PROCESSOR_NUMBER  procnumber = { 0 };
 		VCPUVMX*		  NestedvCPU	 = GetVcpuVmx(guest_context);
-		VMDbgCfg* cfg =	NULL;
-		IceGetVmmDbgConfig(&cfg);
+	 
 		if (GetvCpuMode(guest_context) != VmxMode)
 		{
 			HYPERPLATFORM_LOG_DEBUG_SAFE(("Current vCPU already in VMX mode ! \r\n"));
@@ -1323,104 +1299,19 @@ VOID VmxVmresumeEmulate(GuestContext* guest_context)
 			HYPERPLATFORM_LOG_DEBUG(" Vmresume: Unimplemented third level virualization VMX: %I64x  VMCS12: %I64x \r\n", GetVcpuVmx(guest_context), NestedvCPU->vmcs12.VmcsPa);
 			VMfailInvalid(GetFlagReg(guest_context));
 			break;
-		}
-
-		ENTER_GUEST_MODE(NestedvCPU);
-
-		auto      vmcs02_pa = NestedvCPU->vmcs02.VmcsPa;
-		auto	  vmcs12_pa = NestedvCPU->vmcs12.VmcsPa;
-
-		if (!vmcs02_pa || !vmcs12_pa)
-		{
-			HYPERPLATFORM_LOG_DEBUG_SAFE(("VMRESUME: VMCS still not loaded ! \r\n"));
-			VMfailInvalid(GetFlagReg(guest_context));
-			break;
-		}
-	
-		auto    vmcs02_va = (ULONG64)UtilVaFromPa(vmcs02_pa);
-		auto    vmcs12_va = (ULONG64)UtilVaFromPa(vmcs12_pa);
-
-		// Write a VMCS revision identifier
-		const Ia32VmxBasicMsr vmx_basic_msr = { UtilReadMsr64(Msr::kIa32VmxBasic) };
-		VmControlStructure* ptr = (VmControlStructure*)vmcs02_va;
-
-		VmRead32(VmcsField::kSecondaryVmExecControl, vmcs12_va, &SecondaryCtrl);
-		SecondCtrl = { SecondaryCtrl };
-
-
-		ptr->revision_identifier = vmx_basic_msr.fields.revision_identifier;
-
-		//Restore some MSR & cr8 we may need to ensure the consistency  
+		} 
 		  
 		VmxRestoreGuestCr8(NestedvCPU);
-
-		if (cfg && (cfg->CallbackBitmap & DBG_VMENTRY_PRE_VMCS_SAVE_HOST_STATE))
-		{
-			const VmExitInformation exit_reason = {
-				static_cast<ULONG32>(UtilVmRead(VmcsField::kVmExitReason)) };
-			VMDbgInfo Info = { 0 };
-			Info.CallbackType = DBG_VMENTRY_PRE_VMCS_SAVE_HOST_STATE;
-			Info.ExitReason = exit_reason.fields.reason;
-			Info.GuestVmcs = (ULONG_PTR)UtilVaFromPa(GetVcpuVmx(guest_context)->vmcs12.VmcsPa);
-			cfg->OnPreVmEntryCallback[0](&Info);
-		}
-
-		//Prepare VMCS01 Host / Control Field
-		PrepareHostAndControlField(vmcs12_va, vmcs02_pa, FALSE);
-
-		if (SecondCtrl.fields.enable_ept)
-		{ 
-			UtilVmWrite(VmcsField::kEptPointer, GetEptp02(guest_context)); 
-		}
-
-		if (cfg && (cfg->CallbackBitmap & DBG_VMENTRY_POST_VMCS_SAVE_HOST_STATE))
-		{
-			const VmExitInformation exit_reason = {
-				static_cast<ULONG32>(UtilVmRead(VmcsField::kVmExitReason)) };
-			VMDbgInfo Info = { 0 };
-			Info.CallbackType = DBG_VMENTRY_POST_VMCS_SAVE_HOST_STATE;
-			Info.ExitReason = exit_reason.fields.reason;
-			Info.GuestVmcs = (ULONG_PTR)UtilVaFromPa(GetVcpuVmx(guest_context)->vmcs12.VmcsPa);
-			cfg->OnPostVmEntryCallback[0](&Info);
-		}
-		
-		
-		if (cfg->CallbackBitmap & DBG_VMENTRY_PRE_VMCS_LOAD_GUEST_STATE)
-		{
-			const VmExitInformation exit_reason = {
-				static_cast<ULONG32>(UtilVmRead(VmcsField::kVmExitReason)) };
-			VMDbgInfo Info = { 0 };
-			Info.CallbackType = DBG_VMENTRY_PRE_VMCS_LOAD_GUEST_STATE;
-			Info.ExitReason = exit_reason.fields.reason;
-			Info.GuestVmcs = (ULONG_PTR)UtilVaFromPa(GetVcpuVmx(guest_context)->vmcs12.VmcsPa);
-			cfg->OnPreVmEntryCallback[0](&Info);
-		}
-		/*
-		VM Guest state field Start
-		*/
-		PrepareGuestStateField(vmcs12_va); 
-		/*
-		VM Guest state field End
-		*/ 
-
-		if (cfg->CallbackBitmap & DBG_VMENTRY_POST_VMCS_LOAD_GUEST_STATE)
-		{
-			const VmExitInformation exit_reason = {
-				static_cast<ULONG32>(UtilVmRead(VmcsField::kVmExitReason)) };
-			VMDbgInfo Info = { 0 };
-			Info.CallbackType = DBG_VMENTRY_POST_VMCS_LOAD_GUEST_STATE;
-			Info.ExitReason = exit_reason.fields.reason;
-			Info.GuestVmcs = (ULONG_PTR)UtilVaFromPa(GetVcpuVmx(guest_context)->vmcs12.VmcsPa);
-			cfg->OnPostVmEntryCallback[0](&Info);
-		}
-	
-		PrintVMCS();   
-		
+ 
 		SaveHostKernelGsBase(GetProcessorData(guest_context)); 
 		LoadGuestKernelGsBase(GetProcessorData(guest_context));
-		 
-		//--------------------------------------------------------------------------------------//
 
+		VmxVMEntryEmulate(NestedvCPU, guest_context);
+
+		PrintVMCS();
+
+		VmEntryCheck();
+		  
 		/*
 		*		After L1 handles any VM Exit and should be executes VMRESUME for back L2
 		*		But this time trapped by VMCS01 and We can't get any VM-Exit information
@@ -1430,8 +1321,6 @@ VOID VmxVmresumeEmulate(GuestContext* guest_context)
 		*		VMCS01, we can't and shouldn't change it.
 		*		See: VmmVmExitHandler
 		*/
-
-		//--------------------------------------------------------------------------------------//
 
 	
 		HYPERPLATFORM_COMMON_DBG_BREAK();
