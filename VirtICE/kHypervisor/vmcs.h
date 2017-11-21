@@ -132,6 +132,5 @@ CHAR* GetVmcsFieldNameByIndex(
 	VmcsField encoding
 );
 
-VOID VmEntryCheck();
 }
 #pragma once
