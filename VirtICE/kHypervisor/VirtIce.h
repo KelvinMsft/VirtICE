@@ -48,11 +48,11 @@ typedef struct
 #pragma pack(8)
 typedef struct
 {				
-	ULONG64				CallbackType;  // Callback setting
-	ULONG_PTR			GuestVmcs;  // General used
+	ULONG64			CallbackType;  // Callback setting
+	ULONG_PTR		GuestVmcs;  // General used
 	VmcsDiff    		ComparedResult[MAX_DIFF_ITEM_VMCS];	// Used by On Comparsion 
 	VmxExitReason		ExitReason;	// Used by OnVmExit
-	CHAR*				ExitReasonName; // Used by OnVmExit
+	CHAR*			ExitReasonName; // Used by OnVmExit
 }VMDbgInfo, *pVMDbgInfo;
 #pragma pop()
   
@@ -67,11 +67,11 @@ typedef PVOID(VMCALLBACK *pVmSpecificVmExitCallback)(VMDbgInfo*);
 #pragma pack(8)
 typedef struct
 {
-	ULONG64     				CallbackBitmap;			// used by distinct different callback event
-	ULONG64						VMExitBitmap;			// used by specific callback
-	pPreVMExitCallback			OnPreVmExitCallback[8];
-	pPostVMExitCallback			OnPostVmExitCallback[8];
-	pPreVMEntryCallback			OnPreVmEntryCallback[8];
+	ULONG64     			CallbackBitmap;			// used by distinct different callback event
+	ULONG64				VMExitBitmap;			// used by specific callback
+	pPreVMExitCallback		OnPreVmExitCallback[8];
+	pPostVMExitCallback		OnPostVmExitCallback[8];
+	pPreVMEntryCallback		OnPreVmEntryCallback[8];
 	pPostVMEntryCallback		OnPostVmEntryCallback[8]; 
 	pVmcsComparsionCallback		OnCompareCallback[8];
 	pVmSpecificVmExitCallback	OnSpecificVmExit[8]; 
